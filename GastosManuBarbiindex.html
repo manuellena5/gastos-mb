@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Gastos M&amp;B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+:root {
+  --bg:      #0f0f1a;
+  --bg2:     #171728;
+  --bg3:     #1e1e32;
+  --bg4:     #252540;
+  --border:  rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.15);
+  --text:    #f0f0f8;
+  --text2:   #9090b0;
+  --text3:   #606080;
+  --manu:    #EF9F27;
+  --manu-bg: rgba(239,159,39,0.13);
+  --barbi:   #E0608A;
+  --barbi-bg:rgba(224,96,138,0.13);
+  --green:   #4ade80;
+  --green-bg:rgba(74,222,128,0.10);
+  --red:     #f87171;
+  --red-bg:  rgba(248,113,113,0.10);
+  --blue:    #60a5fa;
+  --blue-bg: rgba(96,165,250,0.10);
+  --warn:    #fbbf24;
+  --warn-bg: rgba(251,191,36,0.10);
+  --r:  12px;
+  --rs:  8px;
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+}
+html, body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 15px;
+  line-height: 1.5; min-height: 100vh;
+  overscroll-behavior: none;
+}
+#app { max-width: 480px; margin: 0 auto; padding-bottom: 84px; min-height: 100vh; }
+
+/* ── Header ── */
+.hdr { padding: 20px 18px 0; display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+.hdr-title { font-size:22px; font-weight:600; letter-spacing:-.5px; }
+.hdr-title .m { color:var(--manu); }
+.hdr-title .amp { color:var(--text3); margin:0 6px; font-weight:300; }
+.hdr-title .b { color:var(--barbi); }
+.hdr-sub { font-size:12px; color:var(--text3); padding:0 18px 14px; }
+.badge { font-size:11px; color:var(--text2); background:var(--bg3); border:1px solid var(--border); padding:4px 10px; border-radius:20px; }
+
+/* ── Bottom nav ── */
+.bnav {
+  position:fixed; bottom:0; left:0; right:0; max-width:480px; margin:0 auto;
+  background:var(--bg); border-top:1px solid var(--border);
+  display:flex; padding:8px 0 max(8px, env(safe-area-inset-bottom)); z-index:50;
+}
+.bnav-btn { flex:1; background:none; border:none; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 0; color:var(--text3); transition:color .15s; font-family:var(--font); }
+.bnav-btn.active { color:var(--manu); }
+.bnav-icon { font-size:19px; line-height:1; }
+.bnav-lbl  { font-size:10px; font-weight:500; }
+
+/* ── Content ── */
+.content { padding:16px 18px 0; }
+
+/* ── Fields ── */
+.field { display:flex; flex-direction:column; gap:5px; }
+.field label { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.07em; }
+.inp {
+  width:100%; background:var(--bg3); border:1px solid var(--border);
+  border-radius:var(--rs); padding:11px 14px; color:var(--text);
+  font-family:var(--font); font-size:15px; outline:none;
+  transition:border-color .15s; -webkit-appearance:none; appearance:none;
+}
+.inp:focus { border-color:var(--border2); }
+.inp::placeholder { color:var(--text3); }
+.inp[readonly] { background:var(--bg4); color:var(--text2); font-family:var(--mono); font-size:14px; cursor:default; }
+select.inp {
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236060a0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 14px center; padding-right:36px;
+}
+textarea.inp { resize:none; }
+
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.fgrid { display:flex; flex-direction:column; gap:14px; }
+
+/* ── Pills ── */
+.pill-row { display:flex; gap:6px; flex-wrap:wrap; }
+.pill {
+  background:none; border:1px solid var(--border); color:var(--text2);
+  font-family:var(--font); font-size:13px; font-weight:400;
+  padding:8px 13px; border-radius:var(--rs); cursor:pointer;
+  transition:all .12s; white-space:nowrap; user-select:none;
+}
+.pill.active            { font-weight:500; background:rgba(255,255,255,.05); border-color:currentColor; color:var(--text); }
+.pill.p-manu.active     { color:var(--manu);  background:var(--manu-bg);  border-color:var(--manu); }
+.pill.p-barbi.active    { color:var(--barbi); background:var(--barbi-bg); border-color:var(--barbi); }
+.pill.p-green.active    { color:var(--green); background:var(--green-bg); border-color:var(--green); }
+.pill.p-red.active      { color:var(--red);   background:var(--red-bg);   border-color:var(--red); }
+
+/* ── Botón principal ── */
+.btn-main {
+  width:100%; padding:15px; background:linear-gradient(135deg,var(--manu),var(--barbi));
+  color:#fff; font-family:var(--font); font-size:16px; font-weight:600;
+  border:none; border-radius:var(--r); cursor:pointer; letter-spacing:-.2px; transition:opacity .15s;
+}
+.btn-main:active { opacity:.85; }
+.btn-main.editing { background:linear-gradient(135deg,#f59e0b,#d97706); }
+.btn-secondary {
+  width:100%; padding:11px; background:var(--blue-bg); color:var(--blue);
+  border:1px solid rgba(96,165,250,.3); border-radius:var(--rs);
+  font-family:var(--font); font-size:14px; font-weight:500; cursor:pointer;
+}
+
+/* ── Edit banner ── */
+.edit-banner {
+  background:var(--warn-bg); border:1px solid rgba(251,191,36,.3);
+  border-radius:var(--rs); padding:10px 14px; font-size:13px; color:var(--warn);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.edit-banner button { background:none; border:none; color:inherit; font-size:20px; cursor:pointer; line-height:1; padding:0 2px; }
+
+/* ── Lista ── */
+.filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.count-line { font-size:12px; color:var(--text3); margin-bottom:10px; }
+.gcard {
+  background:var(--bg2); border:1px solid var(--border); border-radius:var(--r);
+  padding:13px 14px; margin-bottom:8px; display:flex; gap:10px; align-items:flex-start;
+}
+.gcard-info { flex:1; min-width:0; }
+.gcard-desc { font-weight:500; font-size:14px; margin-bottom:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gcard-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:4px; }
+.tag { font-size:11px; padding:2px 7px; border-radius:4px; border:1px solid transparent; }
+.tag-manu  { color:var(--manu);  background:var(--manu-bg); }
+.tag-barbi { color:var(--barbi); background:var(--barbi-bg); }
+.tag-sh    { color:var(--green); background:var(--green-bg); }
+.tag-cat   { color:var(--text3); background:var(--bg4); }
+.gcard-meta { font-size:11px; color:var(--text3); }
+.gcard-amt  { text-align:right; flex-shrink:0; }
+.gcard-monto { font-weight:600; font-size:15px; font-family:var(--mono); }
+.gcard-monto.ing { color:var(--green); }
+.gcard-ind { font-size:11px; color:var(--text3); font-family:var(--mono); margin-top:2px; }
+.gcard-actions { flex-shrink:0; display:flex; flex-direction:column; gap:4px; }
+.act-btn { background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:6px; font-size:16px; }
+.del-confirm { display:flex; gap:4px; align-items:center; }
+.del-confirm span { font-size:11px; color:var(--red); white-space:nowrap; }
+.del-yes,.del-no { font-family:var(--font); font-size:12px; padding:4px 9px; border-radius:6px; cursor:pointer; border:1px solid transparent; }
+.del-yes { background:var(--red-bg); color:var(--red); }
+.del-no  { background:var(--bg4); color:var(--text2); }
+
+/* ── Dashboard ── */
+.dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+.stat-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:14px; }
+.stat-label { font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.07em; margin-bottom:6px; }
+.stat-val  { font-size:20px; font-weight:600; font-family:var(--mono); line-height:1.2; }
+.stat-sub  { font-size:11px; color:var(--text3); margin-top:4px; }
+.balance-box { background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:14px 16px; margin-bottom:14px; font-size:13px; color:var(--text2); line-height:1.8; }
+.balance-box strong { color:var(--text); }
+.balance-hl { font-size:15px; font-weight:600; margin-top:6px; }
+.sec-title { font-size:13px; font-weight:600; color:var(--text2); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.legend { display:flex; gap:12px; font-size:12px; color:var(--text2); align-items:center; }
+.ldot { width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:4px; vertical-align:middle; }
+.cat-list { display:flex; flex-direction:column; gap:9px; margin-bottom:20px; }
+.cat-name { font-size:12px; color:var(--text2); margin-bottom:4px; display:flex; justify-content:space-between; }
+.cat-total { font-family:var(--mono); font-size:11px; color:var(--text3); }
+.bar-bg { height:8px; background:var(--bg4); border-radius:4px; overflow:hidden; }
+.bar-inner { height:100%; display:flex; border-radius:4px; overflow:hidden; }
+.bar-m { background:var(--manu); }
+.bar-b { background:var(--barbi); }
+.trend-list { display:flex; flex-direction:column; gap:7px; margin-bottom:16px; }
+.trend-row  { display:flex; align-items:center; gap:10px; }
+.trend-mes  { font-size:12px; color:var(--text3); min-width:72px; }
+.trend-bg   { flex:1; height:22px; background:var(--bg4); border-radius:4px; overflow:hidden; position:relative; }
+.trend-inner{ height:100%; display:flex; overflow:hidden; border-radius:4px; }
+.trend-m    { background:var(--manu); opacity:.85; }
+.trend-b    { background:var(--barbi); opacity:.85; }
+.trend-tot  { font-family:var(--mono); font-size:11px; color:var(--text3); min-width:72px; text-align:right; }
+
+/* ── Config ── */
+.cfg-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:16px; margin-bottom:12px; }
+.cfg-title { font-size:14px; font-weight:600; margin-bottom:6px; }
+.cfg-desc  { font-size:13px; color:var(--text2); line-height:1.6; margin-bottom:14px; }
+.cfg-note  { font-size:12px; color:var(--text3); line-height:1.6; }
+pre.code-block {
+  background:var(--bg4); border-radius:var(--rs); padding:12px 14px;
+  font-family:var(--mono); font-size:11px; color:var(--blue);
+  overflow-x:auto; line-height:1.7; white-space:pre; margin-top:10px;
+  border:1px solid var(--border);
+}
+
+/* ── Mes selector ── */
+.mes-sel { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.mes-sel label { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.07em; white-space:nowrap; }
+
+/* ── Empty state ── */
+.empty { text-align:center; padding:56px 20px; color:var(--text3); }
+.empty .ico { font-size:38px; margin-bottom:12px; }
+.empty p { font-size:14px; line-height:1.6; }
+
+/* ── Spinner / overlay ── */
+#overlay {
+  position:fixed; inset:0; background:rgba(15,15,26,.88);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; z-index:200; backdrop-filter:blur(2px);
+}
+#overlay.hidden { display:none; }
+.spinner { width:34px; height:34px; border:2px solid var(--border2); border-top-color:var(--manu); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#overlay p { font-size:13px; color:var(--text2); }
+
+/* ── Toast ── */
+.toast {
+  position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+  padding:10px 22px; border-radius:var(--rs); font-size:14px; font-weight:500;
+  z-index:999; white-space:nowrap; pointer-events:none;
+  animation:tin .2s ease;
+}
+.toast.ok  { background:var(--green-bg); color:var(--green); border:1px solid rgba(74,222,128,.3); }
+.toast.err { background:var(--red-bg);   color:var(--red);   border:1px solid rgba(248,113,113,.3); }
+@keyframes tin { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+</style>
+</head>
+<body>
+
+<!-- Overlay carga -->
+<div id="overlay">
+  <div class="spinner"></div>
+  <p id="overlay-msg">Cargando gastos…</p>
+</div>
+
+<div id="app">
+  <div class="hdr">
+    <div>
+      <div class="hdr-title"><span class="m">Manu</span><span class="amp">&amp;</span><span class="b">Barbi</span></div>
+    </div>
+    <span class="badge" id="badge">0 mov.</span>
+  </div>
+  <div class="hdr-sub">Gastos compartidos</div>
+
+  <!-- Contenido dinámico (solo se re-renderiza al cambiar de tab) -->
+  <div class="content" id="content"></div>
+
+  <!-- Bottom nav -->
+  <nav class="bnav">
+    <button class="bnav-btn active" id="nav-nuevo"     onclick="goTab('nuevo')">
+      <span class="bnav-icon">＋</span><span class="bnav-lbl">Nuevo</span>
+    </button>
+    <button class="bnav-btn" id="nav-gastos"    onclick="goTab('gastos')">
+      <span class="bnav-icon">📋</span><span class="bnav-lbl">Gastos</span>
+    </button>
+    <button class="bnav-btn" id="nav-dashboard" onclick="goTab('dashboard')">
+      <span class="bnav-icon">📊</span><span class="bnav-lbl">Resumen</span>
+    </button>
+    <button class="bnav-btn" id="nav-config"    onclick="goTab('config')">
+      <span class="bnav-icon">⚙️</span><span class="bnav-lbl">Config</span>
+    </button>
+  </nav>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   CONSTANTES
+═══════════════════════════════════════════════════════ */
+const CATS = [
+  "Amistades y familia","Comisiones y cargos","Créditos y financiación",
+  "Cuentas y servicios","Comidas y bebidas","Donaciones","Educación",
+  "Electrónica","Entretenimiento","Hogar","Impuestos","Indumentaria",
+  "Inversiones","Mascotas","Otros","Salud y cuidado personal",
+  "Seguros","Servicios profesionales","Shopping","Supermercado",
+  "Suscripciones","Tarjeta","Transporte","Viajes"
+];
+const METODOS = ["T. CRÉDITO","DÉBITO","EFECTIVO","TRANSFERENCIA","OTROS"];
+const MESES   = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+/* ═══════════════════════════════════════════════════════
+   ESTADO GLOBAL
+═══════════════════════════════════════════════════════ */
+let gastos     = [];
+let currentTab = "nuevo";
+let editId     = null;
+let pendingDel = null;
+let listMes    = nowMes();
+let listQuien  = "Todos";
+let listSearch = "";
+let dashMes    = nowMes();
+
+/* Estado del formulario — NUNCA se resetea al cambiar un pill */
+const F = {
+  id: uid(), tipo: "Egreso", fecha: today(),
+  descripcion: "", moneda: "ARS", monto: "",
+  compartido: "SI", montoIndividual: "",
+  metodoPago: "T. CRÉDITO", categoria: "Hogar",
+  quien: "Manu", observaciones: ""
+};
+
+function resetForm() {
+  F.id = uid(); F.tipo = "Egreso"; F.fecha = today();
+  F.descripcion = ""; F.moneda = "ARS"; F.monto = "";
+  F.compartido = "SI"; F.montoIndividual = "";
+  F.metodoPago = "T. CRÉDITO"; F.categoria = "Hogar";
+  F.quien = "Manu"; F.observaciones = "";
+}
+
+/* ═══════════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════════ */
+function uid()   { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function today() { return new Date().toISOString().split("T")[0]; }
+function nowMes() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+}
+function getMes(f) { return (f||"").slice(0,7); }
+function mesLabel(k) {
+  if (!k) return "";
+  const [y,m] = k.split("-");
+  return MESES[+m-1] + " " + y;
+}
+function fmt(n, cur) {
+  const s = Math.round(Math.abs(+n||0)).toLocaleString("es-AR");
+  return cur === "USD" ? "u$s " + s : "$" + s;
+}
+function esc(s) {
+  return String(s||"")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function calcInd() {
+  const m = parseFloat(F.monto) || 0;
+  F.montoIndividual = String(Math.round(F.compartido === "SI" ? m/2 : m));
+}
+
+/* ═══════════════════════════════════════════════════════
+   NAVEGACIÓN
+═══════════════════════════════════════════════════════ */
+function goTab(t) {
+  currentTab = t;
+  document.querySelectorAll(".bnav-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("nav-" + t)?.classList.add("active");
+  renderTab();
+}
+
+/* ═══════════════════════════════════════════════════════
+   RENDER — sólo se llama al cambiar de tab o cargar datos
+═══════════════════════════════════════════════════════ */
+function renderTab() {
+  document.getElementById("badge").textContent = gastos.length + " mov.";
+  const c = document.getElementById("content");
+  if      (currentTab === "nuevo")     c.innerHTML = buildNuevo();
+  else if (currentTab === "gastos")    c.innerHTML = buildGastos();
+  else if (currentTab === "dashboard") c.innerHTML = buildDashboard();
+  else if (currentTab === "config")    c.innerHTML = buildConfig();
+  attachFormListeners();
+}
+
+/* ═══════════════════════════════════════════════════════
+   TAB NUEVO — construye HTML una vez, luego sólo
+   actualiza clases y el campo readonly
+═══════════════════════════════════════════════════════ */
+function buildNuevo() {
+  calcInd();
+
+  const metPills = METODOS.map(m =>
+    `<button type="button" class="pill met-pill${m===F.metodoPago?" active":""}" data-val="${esc(m)}">${esc(m)}</button>`
+  ).join("");
+
+  const catOpts = CATS.map(c =>
+    `<option value="${esc(c)}"${c===F.categoria?" selected":""}>${esc(c)}</option>`
+  ).join("");
+
+  return `
+  <div class="fgrid" id="form-wrap">
+
+    ${editId ? `<div class="edit-banner">Editando movimiento <button onclick="cancelEdit()" type="button">×</button></div>` : ""}
+
+    <div class="field">
+      <label>Tipo de movimiento</label>
+      <div class="pill-row">
+        <button type="button" class="pill p-red tipo-pill${F.tipo==="Egreso"?" active":""}" data-val="Egreso">📤 Egreso</button>
+        <button type="button" class="pill p-green tipo-pill${F.tipo==="Ingreso"?" active":""}" data-val="Ingreso">📥 Ingreso</button>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Fecha</label>
+        <input id="f-fecha" type="date" class="inp" value="${F.fecha}">
+      </div>
+      <div class="field">
+        <label>¿Quién pagó?</label>
+        <div class="pill-row">
+          <button type="button" class="pill p-manu quien-pill${F.quien==="Manu"?" active":""}" data-val="Manu" style="flex:1">Manu</button>
+          <button type="button" class="pill p-barbi quien-pill${F.quien==="Barbi"?" active":""}" data-val="Barbi" style="flex:1">Barbi</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Descripción</label>
+      <input id="f-desc" type="text" class="inp" placeholder="Ej: Supermercado Día…" value="${esc(F.descripcion)}" autocomplete="off">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Moneda</label>
+        <div class="pill-row">
+          <button type="button" class="pill mon-pill${F.moneda==="ARS"?" active":""}" data-val="ARS">$ Pesos</button>
+          <button type="button" class="pill mon-pill${F.moneda==="USD"?" active":""}" data-val="USD">u$s</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Monto</label>
+        <input id="f-monto" type="number" class="inp" placeholder="0" value="${F.monto}" inputmode="decimal" min="0">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>¿Compartido?</label>
+        <div class="pill-row">
+          <button type="button" class="pill p-green comp-pill${F.compartido==="SI"?" active":""}" data-val="SI" style="flex:1">✅ Sí</button>
+          <button type="button" class="pill comp-pill${F.compartido==="NO"?" active":""}" data-val="NO" style="flex:1">👤 No</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Monto individual</label>
+        <input id="f-ind" type="text" class="inp" readonly value="${F.montoIndividual ? fmt(F.montoIndividual, F.moneda) : "—"}">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Método de pago</label>
+      <div class="pill-row">${metPills}</div>
+    </div>
+
+    <div class="field">
+      <label>Categoría</label>
+      <select id="f-cat" class="inp">${catOpts}</select>
+    </div>
+
+    <div class="field">
+      <label>Observaciones</label>
+      <textarea id="f-obs" class="inp" rows="2" placeholder="Notas opcionales…">${esc(F.observaciones)}</textarea>
+    </div>
+
+    <button type="button" class="btn-main${editId?" editing":""}" onclick="submitForm()">
+      ${editId ? "💾 Guardar cambios" : "＋ Registrar gasto"}
+    </button>
+  </div>`;
+}
+
+/* ── Attach listeners UNA sola vez después de renderizar ──
+   Los pills NO re-renderizan el HTML, sólo cambian clases y
+   actualizan el campo ind. Los inputs de texto sólo escriben en F. */
+function attachFormListeners() {
+  if (currentTab !== "nuevo") return;
+
+  /* Texto libre */
+  const fDesc  = document.getElementById("f-desc");
+  const fMonto = document.getElementById("f-monto");
+  const fFecha = document.getElementById("f-fecha");
+  const fObs   = document.getElementById("f-obs");
+  const fCat   = document.getElementById("f-cat");
+
+  if (fDesc)  fDesc.addEventListener("input",  () => { F.descripcion = fDesc.value; });
+  if (fObs)   fObs.addEventListener("input",   () => { F.observaciones = fObs.value; });
+  if (fFecha) fFecha.addEventListener("change", () => { F.fecha = fFecha.value; });
+  if (fCat)   fCat.addEventListener("change",   () => { F.categoria = fCat.value; });
+
+  if (fMonto) fMonto.addEventListener("input", () => {
+    F.monto = fMonto.value;
+    updateInd();
+  });
+
+  /* Pills — sin re-render */
+  pill("tipo-pill",  v => { F.tipo = v; });
+  pill("quien-pill", v => { F.quien = v; });
+  pill("mon-pill",   v => { F.moneda = v; updateInd(); });
+  pill("comp-pill",  v => { F.compartido = v; updateInd(); });
+  pill("met-pill",   v => { F.metodoPago = v; });
+}
+
+/* Actualiza sólo el campo readonly sin tocar nada más */
+function updateInd() {
+  calcInd();
+  const el = document.getElementById("f-ind");
+  if (el) el.value = F.montoIndividual ? fmt(F.montoIndividual, F.moneda) : "—";
+}
+
+/* Activa el pill correcto dentro de un grupo (por clase) */
+function pill(cls, onSelect) {
+  document.querySelectorAll("." + cls).forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("." + cls).forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      onSelect(btn.dataset.val);
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   SUBMIT
+═══════════════════════════════════════════════════════ */
+async function submitForm() {
+  /* leer valores actuales de los inputs por si acaso */
+  const fDesc  = document.getElementById("f-desc");
+  const fMonto = document.getElementById("f-monto");
+  const fObs   = document.getElementById("f-obs");
+  const fFecha = document.getElementById("f-fecha");
+  const fCat   = document.getElementById("f-cat");
+  if (fDesc)  F.descripcion   = fDesc.value;
+  if (fMonto) F.monto         = fMonto.value;
+  if (fObs)   F.observaciones = fObs.value;
+  if (fFecha) F.fecha         = fFecha.value;
+  if (fCat)   F.categoria     = fCat.value;
+
+  if (!F.descripcion.trim()) return showToast("Completá la descripción", false);
+  if (!F.monto || isNaN(+F.monto) || +F.monto <= 0) return showToast("Ingresá un monto válido", false);
+
+  const url = getScriptUrl();
+  if (!url) return showToast("Configurá la URL del script en Config", false);
+
+  calcInd();
+  const g = {
+    ...F,
+    monto: +F.monto,
+    montoIndividual: +F.montoIndividual || +F.monto
+  };
+
+  showOverlay("Guardando…");
+  try {
+    const res = await post(url, editId ? { action:"update", gasto:g } : { action:"save", gasto:g });
+    if (!res.ok) throw new Error(res.error || "Error");
+
+    if (editId) {
+      const i = gastos.findIndex(x => x.id === editId);
+      if (i >= 0) gastos[i] = g; else gastos.unshift(g);
+      editId = null;
+      showToast("Actualizado ✓");
+    } else {
+      gastos.unshift(g);
+      showToast("Gasto registrado ✓");
+    }
+    resetForm();
+  } catch(e) {
+    showToast("Error al guardar: " + e.message, false);
+  }
+  hideOverlay();
+  renderTab();
+}
+
+function cancelEdit() {
+  editId = null;
+  resetForm();
+  renderTab();
+}
+
+/* ═══════════════════════════════════════════════════════
+   TAB GASTOS
+═══════════════════════════════════════════════════════ */
+function buildGastos() {
+  const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
+
+  const mesOpts = [`<option value="">Todos los meses</option>`]
+    .concat(meses.map(m => `<option value="${m}"${m===listMes?" selected":""}>${mesLabel(m)}</option>`))
+    .join("");
+
+  const filtrados = gastos.filter(g => {
+    if (listMes && getMes(g.fecha) !== listMes) return false;
+    if (listQuien !== "Todos" && g.quien !== listQuien) return false;
+    if (listSearch) {
+      const q = listSearch.toLowerCase();
+      return ["descripcion","categoria","observaciones"].some(k => (g[k]||"").toLowerCase().includes(q));
+    }
+    return true;
+  });
+
+  const totalEg = filtrados.filter(g=>g.tipo==="Egreso").reduce((a,g)=>a+(+g.monto),0);
+  const countTxt = filtrados.length + " movimiento" + (filtrados.length!==1?"s":"")
+    + (filtrados.length>0 ? " · Total egresos: " + fmt(totalEg) : "");
+
+  const cards = filtrados.length === 0
+    ? `<div class="empty"><div class="ico">${gastos.length===0?"📝":"🔍"}</div>
+       <p>${gastos.length===0?"Sin gastos todavía.<br>¡Registrá el primero!":"Sin resultados."}</p></div>`
+    : filtrados.map(buildCard).join("");
+
+  return `
+    <div class="filters">
+      <select class="inp" style="flex:1 1 140px" onchange="listMes=this.value;renderTab()">${mesOpts}</select>
+      <select class="inp" style="flex:0 1 110px" onchange="listQuien=this.value;renderTab()">
+        ${["Todos","Manu","Barbi"].map(p=>`<option${p===listQuien?" selected":""}>${p}</option>`).join("")}
+      </select>
+      <input type="search" class="inp" style="flex:1 1 100%" placeholder="🔍 Buscar…" value="${esc(listSearch)}"
+        oninput="listSearch=this.value;renderTab()">
+    </div>
+    <div class="count-line">${countTxt}</div>
+    ${cards}`;
+}
+
+function buildCard(g) {
+  const actions = pendingDel === g.id
+    ? `<div class="del-confirm">
+         <span>¿Seguro?</span>
+         <button class="del-yes" onclick="confirmDelete('${g.id}')">Sí</button>
+         <button class="del-no"  onclick="pendingDel=null;renderTab()">No</button>
+       </div>`
+    : `<button class="act-btn" onclick="startEdit('${g.id}')" title="Editar">✏️</button>
+       <button class="act-btn" onclick="pendingDel='${g.id}';renderTab()" title="Eliminar">🗑️</button>`;
+
+  return `
+  <div class="gcard">
+    <div class="gcard-info">
+      <div class="gcard-desc">${esc(g.descripcion)}</div>
+      <div class="gcard-tags">
+        <span class="tag tag-${g.quien==='Manu'?'manu':'barbi'}">${g.quien}</span>
+        <span class="tag tag-cat">${esc(g.categoria)}</span>
+        ${g.compartido==="SI"?'<span class="tag tag-sh">Compartido</span>':""}
+      </div>
+      <div class="gcard-meta">${g.fecha} · ${esc(g.metodoPago)}${g.observaciones?" · "+esc(g.observaciones):""}</div>
+    </div>
+    <div class="gcard-amt">
+      <div class="gcard-monto${g.tipo==="Ingreso"?" ing":""}">
+        ${g.tipo==="Ingreso"?"+":"-"}${fmt(g.monto,g.moneda)}
+      </div>
+      ${g.compartido==="SI"?`<div class="gcard-ind">c/u: ${fmt(g.montoIndividual,g.moneda)}</div>`:""}
+    </div>
+    <div class="gcard-actions">${actions}</div>
+  </div>`;
+}
+
+function startEdit(id) {
+  const g = gastos.find(x => x.id === id);
+  if (!g) return;
+  Object.assign(F, { ...g, monto: String(g.monto), montoIndividual: String(g.montoIndividual) });
+  editId = id;
+  goTab("nuevo");
+}
+
+async function confirmDelete(id) {
+  const url = getScriptUrl();
+  if (!url) return showToast("Configurá la URL del script", false);
+  showOverlay("Eliminando…");
+  try {
+    await post(url, { action:"delete", id });
+    gastos = gastos.filter(x => x.id !== id);
+    pendingDel = null;
+    showToast("Eliminado");
+  } catch(e) { showToast("Error al eliminar", false); }
+  hideOverlay();
+  renderTab();
+}
+
+/* ═══════════════════════════════════════════════════════
+   TAB DASHBOARD
+═══════════════════════════════════════════════════════ */
+function buildDashboard() {
+  const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
+  const mesOpts = meses.map(m => `<option value="${m}"${m===dashMes?" selected":""}>${mesLabel(m)}</option>`).join("");
+
+  const mes = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
+
+  const manuPago  = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
+  const barbiPago = mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
+  const manuSh    = mes.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+  const barbiSh   = mes.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+  const balance   = (manuSh - barbiSh) / 2;
+  const balTxt    = balance===0 ? "Están al día ✓"
+                  : balance>0   ? `Barbi le debe ${fmt(Math.abs(balance))} a Manu`
+                  :               `Manu le debe ${fmt(Math.abs(balance))} a Barbi`;
+  const balColor  = balance===0 ? "var(--green)" : "var(--warn)";
+
+  /* Por categoría */
+  const byCat = {};
+  mes.forEach(g => {
+    if (!byCat[g.categoria]) byCat[g.categoria] = {m:0,b:0};
+    if (g.quien==="Manu") byCat[g.categoria].m += +g.montoIndividual;
+    else                  byCat[g.categoria].b += +g.montoIndividual;
+  });
+  const catData = Object.entries(byCat)
+    .map(([cat,v])=>({cat,m:v.m,b:v.b,total:v.m+v.b}))
+    .sort((a,b)=>b.total-a.total).slice(0,9);
+  const maxCat = catData.length ? catData[0].total : 1;
+
+  const catRows = catData.map(c=>{
+    const wt = (c.total/maxCat*100).toFixed(1);
+    const wm = c.total ? (c.m/c.total*100).toFixed(1) : 0;
+    return `<div class="cat-row">
+      <div class="cat-name"><span>${esc(c.cat)}</span><span class="cat-total">${fmt(c.total)}</span></div>
+      <div class="bar-bg"><div class="bar-inner" style="width:${wt}%">
+        <div class="bar-m" style="width:${wm}%"></div>
+        <div class="bar-b" style="width:${100-wm}%"></div>
+      </div></div>
+    </div>`;
+  }).join("");
+
+  /* Tendencia últimos 5 meses */
+  const trend = {};
+  gastos.filter(g=>g.tipo==="Egreso").forEach(g=>{
+    const k=getMes(g.fecha);
+    if(!trend[k]) trend[k]={k,m:0,b:0};
+    if(g.quien==="Manu") trend[k].m += +g.montoIndividual;
+    else                 trend[k].b += +g.montoIndividual;
+  });
+  const tData = Object.values(trend).sort((a,b)=>a.k<b.k?-1:1).slice(-5);
+  const maxT  = Math.max(...tData.map(t=>t.m+t.b),1);
+
+  const tRows = tData.map(t=>{
+    const tot = t.m+t.b;
+    const w   = (tot/maxT*100).toFixed(1);
+    const wm  = tot ? (t.m/tot*100).toFixed(1) : 0;
+    const lbl = mesLabel(t.k).split(" ")[0].slice(0,3) + " " + t.k.split("-")[0];
+    return `<div class="trend-row">
+      <span class="trend-mes">${lbl}</span>
+      <div class="trend-bg"><div class="trend-inner" style="width:${w}%">
+        <div class="trend-m" style="width:${wm}%"></div>
+        <div class="trend-b" style="width:${100-wm}%"></div>
+      </div></div>
+      <span class="trend-tot">${fmt(tot)}</span>
+    </div>`;
+  }).join("");
+
+  return `
+  <div class="mes-sel">
+    <label>Mes</label>
+    <select class="inp" onchange="dashMes=this.value;renderTab()">
+      ${meses.length===0?`<option value="${dashMes}">${mesLabel(dashMes)}</option>`:mesOpts}
+    </select>
+  </div>
+
+  <div class="dash-grid">
+    <div class="stat-card">
+      <div class="stat-label">💛 Manu pagó</div>
+      <div class="stat-val" style="color:var(--manu)">${fmt(manuPago)}</div>
+      <div class="stat-sub">Compartido: ${fmt(manuSh)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">💗 Barbi pagó</div>
+      <div class="stat-val" style="color:var(--barbi)">${fmt(barbiPago)}</div>
+      <div class="stat-sub">Compartido: ${fmt(barbiSh)}</div>
+    </div>
+  </div>
+
+  ${(manuSh>0||barbiSh>0) ? `
+  <div class="balance-box">
+    <div>Manu puso <strong>${fmt(manuSh)}</strong> &nbsp;·&nbsp; Barbi puso <strong>${fmt(barbiSh)}</strong></div>
+    <div>Total compartido: <strong>${fmt(manuSh+barbiSh)}</strong> → c/u debería haber puesto <strong>${fmt((manuSh+barbiSh)/2)}</strong></div>
+    <div class="balance-hl" style="color:${balColor}">${balTxt}</div>
+  </div>` : ""}
+
+  ${catData.length > 0 ? `
+  <div class="sec-title">
+    Por categoría
+    <span class="legend">
+      <span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
+      <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>
+    </span>
+  </div>
+  <div class="cat-list">${catRows}</div>
+  ${tData.length>1?`<div class="sec-title">Últimos meses</div><div class="trend-list">${tRows}</div>`:""}
+  ` : `<div class="empty"><div class="ico">📊</div><p>Sin egresos para ${mesLabel(dashMes)||"este mes"}.</p></div>`}
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TAB CONFIG
+═══════════════════════════════════════════════════════ */
+function buildConfig() {
+  const saved = getScriptUrl();
+  return `
+  <div class="cfg-card">
+    <div class="cfg-title">URL del Google Apps Script</div>
+    <div class="cfg-desc">
+      Pegá acá la URL de tu Web App (Apps Script) para que la app pueda guardar y leer los gastos del Google Sheet.
+      <br>Sin esto la app no guarda nada.
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Web App URL</label>
+      <input id="cfg-url" type="url" class="inp" placeholder="https://script.google.com/macros/s/…/exec"
+        value="${esc(saved)}" autocomplete="off">
+    </div>
+    <button class="btn-secondary" onclick="saveScriptUrl()">💾 Guardar URL</button>
+  </div>
+
+  <div class="cfg-card">
+    <div class="cfg-title">Recargar gastos</div>
+    <div class="cfg-desc">Si cargaste gastos desde el otro celular y no aparecen, tocá este botón.</div>
+    <button class="btn-secondary" onclick="loadGastos()">🔄 Recargar datos</button>
+  </div>
+
+  <div class="cfg-card">
+    <div class="cfg-title">Agregar al inicio (Android)</div>
+    <div class="cfg-note">
+      Abrí esta URL en Chrome → tocá los tres puntos ⋮ → "Agregar a pantalla de inicio".<br>
+      Queda como ícono de app, sin barra del navegador.
+    </div>
+  </div>
+
+  <div class="cfg-card">
+    <div class="cfg-title">Info</div>
+    <div class="cfg-note">
+      📊 ${gastos.length} movimientos cargados<br>
+      💾 Datos almacenados en Google Sheets<br>
+      🔗 Compartido entre todos los dispositivos con la misma URL
+    </div>
+  </div>`;
+}
+
+function saveScriptUrl() {
+  const url = document.getElementById("cfg-url")?.value.trim();
+  if (!url) return showToast("Pegá una URL válida", false);
+  localStorage.setItem("mbs-script-url", url);
+  showToast("URL guardada ✓");
+  loadGastos();
+}
+
+function getScriptUrl() {
+  return localStorage.getItem("mbs-script-url") || "";
+}
+
+/* ═══════════════════════════════════════════════════════
+   HTTP — fetch con CORS para Apps Script
+═══════════════════════════════════════════════════════ */
+async function post(url, data) {
+  const res = await fetch(url, {
+    method: "POST",
+    body: JSON.stringify(data),
+    headers: { "Content-Type": "text/plain" }  // Apps Script necesita text/plain para evitar preflight
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+/* ═══════════════════════════════════════════════════════
+   CARGA DE DATOS
+═══════════════════════════════════════════════════════ */
+async function loadGastos() {
+  const url = getScriptUrl();
+  if (!url) {
+    hideOverlay();
+    goTab("config");
+    showToast("Primero configurá la URL del script", false);
+    return;
+  }
+  showOverlay("Cargando gastos…");
+  try {
+    const r = await post(url, { action:"list" });
+    if (!r.ok) throw new Error(r.error || "Error");
+    gastos = r.gastos || [];
+    showToast("Datos cargados ✓");
+  } catch(e) {
+    showToast("Error al conectar con el script", false);
+  }
+  hideOverlay();
+  renderTab();
+}
+
+/* ═══════════════════════════════════════════════════════
+   UI HELPERS
+═══════════════════════════════════════════════════════ */
+function showOverlay(msg) {
+  document.getElementById("overlay-msg").textContent = msg || "Cargando…";
+  document.getElementById("overlay").classList.remove("hidden");
+}
+function hideOverlay() {
+  document.getElementById("overlay").classList.add("hidden");
+}
+function showToast(msg, ok=true) {
+  const t = document.createElement("div");
+  t.className = "toast " + (ok ? "ok" : "err");
+  t.textContent = msg;
+  document.getElementById("toasts").appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+/* ═══════════════════════════════════════════════════════
+   ARRANQUE
+═══════════════════════════════════════════════════════ */
+window.addEventListener("DOMContentLoaded", async () => {
+  renderTab(); // muestra la UI aunque no haya URL todavía
+  hideOverlay();
+  goTab("nuevo");
+  await loadGastos();
+});
+</script>
+</body>
+</html>
