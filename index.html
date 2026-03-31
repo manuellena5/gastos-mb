@@ -198,9 +198,10 @@ pre.code-block {
   border:1px solid var(--border);
 }
 
+/* ── Filtro pills horizontal ── */
+.filter-pills { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:10px; padding-bottom:2px; }
 /* ── Mes selector ── */
-.mes-sel { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
-.mes-sel label { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.07em; white-space:nowrap; }
+.mes-sel { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 
 /* ── Empty state ── */
 .empty { text-align:center; padding:56px 20px; color:var(--text3); }
@@ -227,7 +228,34 @@ pre.code-block {
 }
 .toast.ok  { background:var(--green-bg); color:var(--green); border:1px solid rgba(74,222,128,.3); }
 .toast.err { background:var(--red-bg);   color:var(--red);   border:1px solid rgba(248,113,113,.3); }
-@keyframes tin { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+/* ── Filtro pills horizontal ── */
+.filter-pills { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:10px; padding-bottom:2px; }
+.filter-pills::-webkit-scrollbar { display:none; }
+.fpill {
+  background:none; border:1px solid var(--border); color:var(--text3);
+  font-family:var(--font); font-size:12px; font-weight:500;
+  padding:6px 14px; border-radius:20px; cursor:pointer;
+  white-space:nowrap; transition:all .13s; flex-shrink:0;
+}
+.fpill.active          { color:var(--text);  background:var(--bg3); border-color:var(--border2); }
+.fpill.fp-sh.active    { color:var(--green); background:var(--green-bg); border-color:var(--green); }
+.fpill.fp-manu.active  { color:var(--manu);  background:var(--manu-bg);  border-color:var(--manu); }
+.fpill.fp-barbi.active { color:var(--barbi); background:var(--barbi-bg); border-color:var(--barbi); }
+.filter-row { display:flex; gap:8px; margin-bottom:8px; }
+
+/* ── Botón exportar ── */
+.btn-export {
+  background:var(--green-bg); color:var(--green);
+  border:1px solid rgba(74,222,128,.3); border-radius:var(--rs);
+  font-family:var(--font); font-size:12px; font-weight:600;
+  padding:6px 13px; cursor:pointer; white-space:nowrap;
+  transition:opacity .15s; flex-shrink:0;
+}
+.btn-export:active { opacity:.75; }
+
+/* ── Mes selector ── */
+.mes-sel { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.mes-sel label { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.07em; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -292,10 +320,12 @@ let gastos     = [];
 let currentTab = "nuevo";
 let editId     = null;
 let pendingDel = null;
-let listMes    = nowMes();
-let listQuien  = "Todos";
-let listSearch = "";
-let dashMes    = nowMes();
+let listMes        = nowMes();
+let listQuien      = "Todos";
+let listCompartido = "Todos";
+let listSearch     = "";
+let dashMes        = nowMes();
+let dashVista      = "Todos";
 
 /* Estado del formulario — NUNCA se resetea al cambiar un pill */
 const F = {
@@ -595,14 +625,28 @@ function cancelEdit() {
 ═══════════════════════════════════════════════════════ */
 function buildGastos() {
   const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
-
   const mesOpts = [`<option value="">Todos los meses</option>`]
     .concat(meses.map(m => `<option value="${m}"${m===listMes?" selected":""}>${mesLabel(m)}</option>`))
     .join("");
 
+  // Opciones del filtro vista: Todos | Compartidos | Manu | Barbi
+  const VISTAS = [
+    { val:"Todos",       cls:"",         lbl:"Todos" },
+    { val:"Compartidos", cls:"fp-sh",    lbl:"🤝 Compartidos" },
+    { val:"Manu",        cls:"fp-manu",  lbl:"💛 Manu" },
+    { val:"Barbi",       cls:"fp-barbi", lbl:"💗 Barbi" },
+  ];
+  const vistaPills = VISTAS.map(v =>
+    `<button class="fpill ${v.cls}${listCompartido===v.val?" active":""}"
+      onclick="listCompartido='${v.val}';renderTab()">${v.lbl}</button>`
+  ).join("");
+
   const filtrados = gastos.filter(g => {
     if (listMes && getMes(g.fecha) !== listMes) return false;
-    if (listQuien !== "Todos" && g.quien !== listQuien) return false;
+    // Filtro vista
+    if (listCompartido === "Compartidos" && g.compartido !== "SI") return false;
+    if (listCompartido === "Manu"  && !(g.quien === "Manu"  && g.compartido !== "SI")) return false;
+    if (listCompartido === "Barbi" && !(g.quien === "Barbi" && g.compartido !== "SI")) return false;
     if (listSearch) {
       const q = listSearch.toLowerCase();
       return ["descripcion","categoria","observaciones"].some(k => (g[k]||"").toLowerCase().includes(q));
@@ -610,9 +654,13 @@ function buildGastos() {
     return true;
   });
 
-  const totalEg = filtrados.filter(g=>g.tipo==="Egreso").reduce((a,g)=>a+(+g.monto),0);
-  const countTxt = filtrados.length + " movimiento" + (filtrados.length!==1?"s":"")
-    + (filtrados.length>0 ? " · Total egresos: " + fmt(totalEg) : "");
+  const totalEg  = filtrados.filter(g=>g.tipo==="Egreso").reduce((a,g)=>a+(+g.monto),0);
+  const totalIng = filtrados.filter(g=>g.tipo==="Ingreso").reduce((a,g)=>a+(+g.monto),0);
+  let countTxt = filtrados.length + " movimiento" + (filtrados.length!==1?"s":"");
+  if (filtrados.length > 0) {
+    countTxt += " · Egresos: " + fmt(totalEg);
+    if (totalIng > 0) countTxt += " · Ingresos: " + fmt(totalIng);
+  }
 
   const cards = filtrados.length === 0
     ? `<div class="empty"><div class="ico">${gastos.length===0?"📝":"🔍"}</div>
@@ -620,15 +668,16 @@ function buildGastos() {
     : filtrados.map(buildCard).join("");
 
   return `
-    <div class="filters">
+    <div class="filter-row">
       <select class="inp" style="flex:1 1 140px" onchange="listMes=this.value;renderTab()">${mesOpts}</select>
-      <select class="inp" style="flex:0 1 110px" onchange="listQuien=this.value;renderTab()">
-        ${["Todos","Manu","Barbi"].map(p=>`<option${p===listQuien?" selected":""}>${p}</option>`).join("")}
-      </select>
-      <input type="search" class="inp" style="flex:1 1 100%" placeholder="🔍 Buscar…" value="${esc(listSearch)}"
+      <input type="search" class="inp" style="flex:1 1 120px" placeholder="🔍 Buscar…" value="${esc(listSearch)}"
         oninput="listSearch=this.value;renderTab()">
     </div>
-    <div class="count-line">${countTxt}</div>
+    <div class="filter-pills">${vistaPills}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span class="count-line" style="margin-bottom:0">${countTxt}</span>
+      ${filtrados.length > 0 ? `<button class="btn-export" onclick="exportarExcel()">📥 Excel</button>` : ""}
+    </div>
     ${cards}`;
 }
 
@@ -692,19 +741,118 @@ function buildDashboard() {
   const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
   const mesOpts = meses.map(m => `<option value="${m}"${m===dashMes?" selected":""}>${mesLabel(m)}</option>`).join("");
 
-  const mes = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
+  // Pills de vista
+  const VISTAS = [
+    { val:"Todos",       cls:"",         lbl:"Todos" },
+    { val:"Compartidos", cls:"fp-sh",    lbl:"🤝 Compartidos" },
+    { val:"Manu",        cls:"fp-manu",  lbl:"💛 Manu" },
+    { val:"Barbi",       cls:"fp-barbi", lbl:"💗 Barbi" },
+  ];
+  const vistaPills = VISTAS.map(v =>
+    `<button class="fpill ${v.cls}${dashVista===v.val?" active":""}"
+      onclick="dashVista='${v.val}';renderTab()">${v.lbl}</button>`
+  ).join("");
 
-  const manuPago  = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
-  const barbiPago = mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
-  const manuSh    = mes.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
-  const barbiSh   = mes.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
-  const balance   = (manuSh - barbiSh) / 2;
-  const balTxt    = balance===0 ? "Están al día ✓"
-                  : balance>0   ? `Barbi le debe ${fmt(Math.abs(balance))} a Manu`
-                  :               `Manu le debe ${fmt(Math.abs(balance))} a Barbi`;
-  const balColor  = balance===0 ? "var(--green)" : "var(--warn)";
+  // Gastos del mes seleccionado
+  const todosEg = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
 
-  /* Por categoría */
+  // Aplicar filtro de vista para determinar qué mostrar en los KPIs
+  function aplicarVista(lista) {
+    if (dashVista === "Compartidos") return lista.filter(g => g.compartido === "SI");
+    if (dashVista === "Manu")        return lista.filter(g => g.quien === "Manu"  && g.compartido !== "SI");
+    if (dashVista === "Barbi")       return lista.filter(g => g.quien === "Barbi" && g.compartido !== "SI");
+    return lista; // Todos
+  }
+
+  const mes = aplicarVista(todosEg);
+
+  // KPIs según la vista activa
+  let kpiHtml = "";
+
+  if (dashVista === "Todos" || dashVista === "Compartidos") {
+    const manuPago = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
+    const barbiPago= mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
+    const manuSh   = dashVista==="Compartidos"
+      ? manuPago
+      : todosEg.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+    const barbiSh  = dashVista==="Compartidos"
+      ? barbiPago
+      : todosEg.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+    const balance  = (manuSh - barbiSh) / 2;
+    const balTxt   = balance===0 ? "Están al día ✓"
+                   : balance>0   ? `Barbi le debe ${fmt(Math.abs(balance))} a Manu`
+                   :               `Manu le debe ${fmt(Math.abs(balance))} a Barbi`;
+    const balColor = balance===0 ? "var(--green)" : "var(--warn)";
+    const totalMes = manuPago + barbiPago;
+
+    kpiHtml = `
+    <div class="dash-grid">
+      <div class="stat-card">
+        <div class="stat-label">💛 Manu pagó</div>
+        <div class="stat-val" style="color:var(--manu)">${fmt(manuPago)}</div>
+        <div class="stat-sub">${dashVista==="Compartidos"?"Del total compartido":"Compartido: "+fmt(manuSh)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">💗 Barbi pagó</div>
+        <div class="stat-val" style="color:var(--barbi)">${fmt(barbiPago)}</div>
+        <div class="stat-sub">${dashVista==="Compartidos"?"Del total compartido":"Compartido: "+fmt(barbiSh)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">⚖️ Balance</div>
+        <div class="stat-val" style="color:${balColor};font-size:15px">${balTxt}</div>
+        <div class="stat-sub">Total: ${fmt(totalMes)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📦 Movimientos</div>
+        <div class="stat-val" style="color:var(--text2)">${mes.length}</div>
+        <div class="stat-sub">${mesLabel(dashMes)||"—"}</div>
+      </div>
+    </div>
+    ${(manuSh>0||barbiSh>0) ? `
+    <div class="balance-box">
+      <div>Manu puso <strong>${fmt(manuSh)}</strong> &nbsp;·&nbsp; Barbi puso <strong>${fmt(barbiSh)}</strong></div>
+      <div>Total compartido: <strong>${fmt(manuSh+barbiSh)}</strong> → c/u debería haber puesto <strong>${fmt((manuSh+barbiSh)/2)}</strong></div>
+      <div class="balance-hl" style="color:${balColor}">${balTxt}</div>
+    </div>` : ""}`;
+
+  } else {
+    // Vista individual: Manu o Barbi solos
+    const quien    = dashVista;
+    const color    = quien==="Manu" ? "var(--manu)" : "var(--barbi)";
+    const total    = mes.reduce((a,g)=>a+(+g.monto),0);
+    const count    = mes.length;
+    const maxMonto = mes.length ? Math.max(...mes.map(g=>+g.monto)) : 0;
+    const topCat   = (() => {
+      const m={}; mes.forEach(g=>{m[g.categoria]=(m[g.categoria]||0)+(+g.monto);});
+      return Object.entries(m).sort((a,b)=>b[1]-a[1])[0];
+    })();
+
+    kpiHtml = `
+    <div class="dash-grid">
+      <div class="stat-card">
+        <div class="stat-label">${quien==="Manu"?"💛":"💗"} Total ${quien}</div>
+        <div class="stat-val" style="color:${color}">${fmt(total)}</div>
+        <div class="stat-sub">Gastos propios del mes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📦 Movimientos</div>
+        <div class="stat-val" style="color:var(--text2)">${count}</div>
+        <div class="stat-sub">${mesLabel(dashMes)||"—"}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">🏆 Mayor gasto</div>
+        <div class="stat-val" style="color:${color};font-size:17px">${fmt(maxMonto)}</div>
+        <div class="stat-sub">del mes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📂 Top categoría</div>
+        <div class="stat-val" style="font-size:14px;color:${color}">${topCat ? esc(topCat[0]) : "—"}</div>
+        <div class="stat-sub">${topCat ? fmt(topCat[1]) : ""}</div>
+      </div>
+    </div>`;
+  }
+
+  /* Por categoría — usa mes filtrado */
   const byCat = {};
   mes.forEach(g => {
     if (!byCat[g.categoria]) byCat[g.categoria] = {m:0,b:0};
@@ -719,18 +867,28 @@ function buildDashboard() {
   const catRows = catData.map(c=>{
     const wt = (c.total/maxCat*100).toFixed(1);
     const wm = c.total ? (c.m/c.total*100).toFixed(1) : 0;
+    // En vistas individuales, barra de un solo color
+    const barHtml = (dashVista==="Manu")
+      ? `<div class="bar-m" style="width:100%"></div>`
+      : (dashVista==="Barbi")
+        ? `<div class="bar-b" style="width:100%"></div>`
+        : `<div class="bar-m" style="width:${wm}%"></div><div class="bar-b" style="width:${100-wm}%"></div>`;
     return `<div class="cat-row">
       <div class="cat-name"><span>${esc(c.cat)}</span><span class="cat-total">${fmt(c.total)}</span></div>
-      <div class="bar-bg"><div class="bar-inner" style="width:${wt}%">
-        <div class="bar-m" style="width:${wm}%"></div>
-        <div class="bar-b" style="width:${100-wm}%"></div>
-      </div></div>
+      <div class="bar-bg"><div class="bar-inner" style="width:${wt}%">${barHtml}</div></div>
     </div>`;
   }).join("");
 
-  /* Tendencia últimos 5 meses */
+  /* Tendencia últimos 5 meses — respeta el filtro de vista */
   const trend = {};
   gastos.filter(g=>g.tipo==="Egreso").forEach(g=>{
+    const aplicado = (() => {
+      if (dashVista==="Compartidos") return g.compartido==="SI";
+      if (dashVista==="Manu")  return g.quien==="Manu"  && g.compartido!=="SI";
+      if (dashVista==="Barbi") return g.quien==="Barbi" && g.compartido!=="SI";
+      return true;
+    })();
+    if (!aplicado) return;
     const k=getMes(g.fecha);
     if(!trend[k]) trend[k]={k,m:0,b:0};
     if(g.quien==="Manu") trend[k].m += +g.montoIndividual;
@@ -744,15 +902,25 @@ function buildDashboard() {
     const w   = (tot/maxT*100).toFixed(1);
     const wm  = tot ? (t.m/tot*100).toFixed(1) : 0;
     const lbl = mesLabel(t.k).split(" ")[0].slice(0,3) + " " + t.k.split("-")[0];
+    const barHtml = (dashVista==="Manu")
+      ? `<div class="trend-m" style="width:100%"></div>`
+      : (dashVista==="Barbi")
+        ? `<div class="trend-b" style="width:100%"></div>`
+        : `<div class="trend-m" style="width:${wm}%"></div><div class="trend-b" style="width:${100-wm}%"></div>`;
     return `<div class="trend-row">
       <span class="trend-mes">${lbl}</span>
-      <div class="trend-bg"><div class="trend-inner" style="width:${w}%">
-        <div class="trend-m" style="width:${wm}%"></div>
-        <div class="trend-b" style="width:${100-wm}%"></div>
-      </div></div>
+      <div class="trend-bg"><div class="trend-inner" style="width:${w}%">${barHtml}</div></div>
       <span class="trend-tot">${fmt(tot)}</span>
     </div>`;
   }).join("");
+
+  // Leyenda según vista
+  const legendHtml = (dashVista==="Manu")
+    ? `<span><span class="ldot" style="background:var(--manu)"></span>Manu</span>`
+    : (dashVista==="Barbi")
+      ? `<span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>`
+      : `<span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
+         <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>`;
 
   return `
   <div class="mes-sel">
@@ -761,34 +929,14 @@ function buildDashboard() {
       ${meses.length===0?`<option value="${dashMes}">${mesLabel(dashMes)}</option>`:mesOpts}
     </select>
   </div>
+  <div class="filter-pills" style="margin-bottom:14px">${vistaPills}</div>
 
-  <div class="dash-grid">
-    <div class="stat-card">
-      <div class="stat-label">💛 Manu pagó</div>
-      <div class="stat-val" style="color:var(--manu)">${fmt(manuPago)}</div>
-      <div class="stat-sub">Compartido: ${fmt(manuSh)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">💗 Barbi pagó</div>
-      <div class="stat-val" style="color:var(--barbi)">${fmt(barbiPago)}</div>
-      <div class="stat-sub">Compartido: ${fmt(barbiSh)}</div>
-    </div>
-  </div>
-
-  ${(manuSh>0||barbiSh>0) ? `
-  <div class="balance-box">
-    <div>Manu puso <strong>${fmt(manuSh)}</strong> &nbsp;·&nbsp; Barbi puso <strong>${fmt(barbiSh)}</strong></div>
-    <div>Total compartido: <strong>${fmt(manuSh+barbiSh)}</strong> → c/u debería haber puesto <strong>${fmt((manuSh+barbiSh)/2)}</strong></div>
-    <div class="balance-hl" style="color:${balColor}">${balTxt}</div>
-  </div>` : ""}
+  ${kpiHtml}
 
   ${catData.length > 0 ? `
   <div class="sec-title">
     Por categoría
-    <span class="legend">
-      <span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
-      <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>
-    </span>
+    <span class="legend">${legendHtml}</span>
   </div>
   <div class="cat-list">${catRows}</div>
   ${tData.length>1?`<div class="sec-title">Últimos meses</div><div class="trend-list">${tRows}</div>`:""}
@@ -853,8 +1001,101 @@ function getScriptUrl() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   HTTP — fetch con CORS para Apps Script
+   EXPORTAR A EXCEL (.xlsx nativo, sin librerías)
 ═══════════════════════════════════════════════════════ */
+function exportarExcel() {
+  // Reconstruye el mismo filtrado que buildGastos
+  const filtrados = gastos.filter(g => {
+    if (listMes && getMes(g.fecha) !== listMes) return false;
+    if (listCompartido === "Compartidos" && g.compartido !== "SI") return false;
+    if (listCompartido === "Manu"  && !(g.quien === "Manu"  && g.compartido !== "SI")) return false;
+    if (listCompartido === "Barbi" && !(g.quien === "Barbi" && g.compartido !== "SI")) return false;
+    if (listSearch) {
+      const q = listSearch.toLowerCase();
+      return ["descripcion","categoria","observaciones"].some(k => (g[k]||"").toLowerCase().includes(q));
+    }
+    return true;
+  });
+
+  if (!filtrados.length) return showToast("No hay gastos para exportar", false);
+
+  const HEADERS = [
+    "Fecha","Descripción","Moneda","Monto","Monto Individual",
+    "Compartido","Quién pagó","Método de pago","Categoría","Observaciones"
+  ];
+
+  // Genera XML de hoja de cálculo compatible con Excel y Google Sheets
+  const xmlEscape = s => String(s ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+  // Celda de texto
+  const cT = (v) => `<Cell><Data ss:Type="String">${xmlEscape(v)}</Data></Cell>`;
+  // Celda numérica
+  const cN = (v) => `<Cell><Data ss:Type="Number">${+v||0}</Data></Cell>`;
+  // Celda de encabezado (negrita)
+  const cH = (v) => `<Cell ss:StyleID="h"><Data ss:Type="String">${xmlEscape(v)}</Data></Cell>`;
+
+  const headerRow = `<Row>${HEADERS.map(cH).join("")}</Row>`;
+
+  const dataRows = filtrados.map(g => `<Row>
+    ${cT(normFecha(g.fecha))}
+    ${cT(g.descripcion)}
+    ${cT(g.moneda)}
+    ${cN(g.monto)}
+    ${cN(g.montoIndividual)}
+    ${cT(g.compartido === "SI" ? "Sí" : "No")}
+    ${cT(g.quien)}
+    ${cT(g.metodoPago)}
+    ${cT(g.categoria)}
+    ${cT(g.observaciones || "")}
+  </Row>`).join("\n");
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="h">
+      <Font ss:Bold="1"/>
+      <Interior ss:Color="#1a1a2e" ss:Pattern="Solid"/>
+      <Font ss:Color="#FFFFFF" ss:Bold="1"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Gastos">
+    <Table>
+      <Column ss:Width="90"/>
+      <Column ss:Width="200"/>
+      <Column ss:Width="60"/>
+      <Column ss:Width="90"/>
+      <Column ss:Width="110"/>
+      <Column ss:Width="80"/>
+      <Column ss:Width="90"/>
+      <Column ss:Width="110"/>
+      <Column ss:Width="140"/>
+      <Column ss:Width="160"/>
+      ${headerRow}
+      ${dataRows}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+
+  // Nombre de archivo con contexto del filtro
+  const mesParte  = listMes ? mesLabel(listMes).replace(" ","_") : "todos";
+  const vistaParte = listCompartido !== "Todos" ? "_" + listCompartido : "";
+  const nombre = `gastos_${mesParte}${vistaParte}.xls`;
+
+  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = nombre; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  showToast(`✓ ${filtrados.length} filas exportadas`);
+}
+
+
 async function post(url, data) {
   const res = await fetch(url, {
     method: "POST",
