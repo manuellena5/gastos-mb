@@ -1001,10 +1001,9 @@ function getScriptUrl() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   EXPORTAR A EXCEL (.xlsx nativo, sin librerías)
+   EXPORTAR A CSV (abre en Excel, Sheets, Numbers, etc.)
 ═══════════════════════════════════════════════════════ */
 function exportarExcel() {
-  // Reconstruye el mismo filtrado que buildGastos
   const filtrados = gastos.filter(g => {
     if (listMes && getMes(g.fecha) !== listMes) return false;
     if (listCompartido === "Compartidos" && g.compartido !== "SI") return false;
@@ -1019,77 +1018,46 @@ function exportarExcel() {
 
   if (!filtrados.length) return showToast("No hay gastos para exportar", false);
 
+  // Escapa un valor para CSV: envuelve en comillas si tiene coma, comilla o salto de línea
+  const csvVal = v => {
+    const s = String(v ?? "");
+    return (s.includes(",") || s.includes('"') || s.includes("\n"))
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+
   const HEADERS = [
     "Fecha","Descripción","Moneda","Monto","Monto Individual",
     "Compartido","Quién pagó","Método de pago","Categoría","Observaciones"
   ];
 
-  // Genera XML de hoja de cálculo compatible con Excel y Google Sheets
-  const xmlEscape = s => String(s ?? "")
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const filas = [
+    HEADERS.map(csvVal).join(","),
+    ...filtrados.map(g => [
+      normFecha(g.fecha),
+      g.descripcion,
+      g.moneda,
+      +g.monto,
+      +g.montoIndividual,
+      g.compartido === "SI" ? "Sí" : "No",
+      g.quien,
+      g.metodoPago,
+      g.categoria,
+      g.observaciones || ""
+    ].map(csvVal).join(","))
+  ];
 
-  // Celda de texto
-  const cT = (v) => `<Cell><Data ss:Type="String">${xmlEscape(v)}</Data></Cell>`;
-  // Celda numérica
-  const cN = (v) => `<Cell><Data ss:Type="Number">${+v||0}</Data></Cell>`;
-  // Celda de encabezado (negrita)
-  const cH = (v) => `<Cell ss:StyleID="h"><Data ss:Type="String">${xmlEscape(v)}</Data></Cell>`;
-
-  const headerRow = `<Row>${HEADERS.map(cH).join("")}</Row>`;
-
-  const dataRows = filtrados.map(g => `<Row>
-    ${cT(normFecha(g.fecha))}
-    ${cT(g.descripcion)}
-    ${cT(g.moneda)}
-    ${cN(g.monto)}
-    ${cN(g.montoIndividual)}
-    ${cT(g.compartido === "SI" ? "Sí" : "No")}
-    ${cT(g.quien)}
-    ${cT(g.metodoPago)}
-    ${cT(g.categoria)}
-    ${cT(g.observaciones || "")}
-  </Row>`).join("\n");
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:x="urn:schemas-microsoft-com:office:excel">
-  <Styles>
-    <Style ss:ID="h">
-      <Font ss:Bold="1"/>
-      <Interior ss:Color="#1a1a2e" ss:Pattern="Solid"/>
-      <Font ss:Color="#FFFFFF" ss:Bold="1"/>
-    </Style>
-  </Styles>
-  <Worksheet ss:Name="Gastos">
-    <Table>
-      <Column ss:Width="90"/>
-      <Column ss:Width="200"/>
-      <Column ss:Width="60"/>
-      <Column ss:Width="90"/>
-      <Column ss:Width="110"/>
-      <Column ss:Width="80"/>
-      <Column ss:Width="90"/>
-      <Column ss:Width="110"/>
-      <Column ss:Width="140"/>
-      <Column ss:Width="160"/>
-      ${headerRow}
-      ${dataRows}
-    </Table>
-  </Worksheet>
-</Workbook>`;
-
-  // Nombre de archivo con contexto del filtro
-  const mesParte  = listMes ? mesLabel(listMes).replace(" ","_") : "todos";
-  const vistaParte = listCompartido !== "Todos" ? "_" + listCompartido : "";
-  const nombre = `gastos_${mesParte}${vistaParte}.xls`;
-
-  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  // BOM UTF-8 para que Excel reconozca tildes y ñ correctamente
+  const csv  = "\uFEFF" + filas.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
-  a.href = url; a.download = nombre; a.click();
+
+  const mesParte   = listMes ? mesLabel(listMes).replace(" ","_") : "todos";
+  const vistaParte = listCompartido !== "Todos" ? "_" + listCompartido : "";
+  a.href = url;
+  a.download = `gastos_${mesParte}${vistaParte}.csv`;
+  a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 
   showToast(`✓ ${filtrados.length} filas exportadas`);
