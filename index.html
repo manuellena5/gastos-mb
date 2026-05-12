@@ -10,6 +10,7 @@
 <title>Gastos M&amp;B</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <style>
 *, *::before, *::after {
   box-sizing: border-box; margin: 0; padding: 0;
@@ -228,6 +229,53 @@ pre.code-block {
 .toast.ok  { background:var(--green-bg); color:var(--green); border:1px solid rgba(74,222,128,.3); }
 .toast.err { background:var(--red-bg);   color:var(--red);   border:1px solid rgba(248,113,113,.3); }
 @keyframes tin { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+
+/* ══════════════════════════════════════════
+   IMPORTAR TAB
+══════════════════════════════════════════ */
+.imp-card {
+  background:var(--bg2); border:1px solid var(--border); border-radius:var(--r);
+  padding:12px 14px; margin-bottom:8px;
+}
+.imp-card.dup { opacity:0.5; }
+.imp-card-top { display:flex; align-items:flex-start; gap:10px; margin-bottom:8px; }
+.imp-card-check { margin-top:2px; width:17px; height:17px; accent-color:var(--manu); flex-shrink:0; cursor:pointer; }
+.imp-card-info { flex:1; min-width:0; }
+.imp-card-desc { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; }
+.imp-card-meta { font-size:11px; color:var(--text3); }
+.imp-card-right { text-align:right; flex-shrink:0; }
+.imp-card-amt { font-family:var(--mono); font-size:14px; font-weight:600; }
+.imp-card-amt.ing { color:var(--green); }
+.imp-card-src { font-size:10px; color:var(--text3); margin-top:2px; }
+.imp-card-fields { border-top:1px solid var(--border); padding-top:10px; display:flex; flex-direction:column; gap:9px; }
+.imp-field-row { display:grid; grid-template-columns:52px 1fr; gap:8px; align-items:center; }
+.imp-field-lbl { font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; }
+.pill.sm { padding:5px 10px; font-size:12px; }
+.imp-summary {
+  background:var(--bg3); border:1px solid var(--border); border-radius:var(--rs);
+  padding:10px 14px; font-size:13px; color:var(--text2);
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;
+  position:sticky; top:0; z-index:10;
+}
+.imp-summary strong { color:var(--text); }
+.bdg {
+  display:inline-block; font-size:10px; padding:2px 6px; border-radius:4px;
+  border:1px solid transparent; margin-left:5px; vertical-align:middle;
+}
+.bdg-dup  { background:var(--warn-bg);  color:var(--warn);  border-color:rgba(251,191,36,.3); }
+.bdg-new  { background:var(--green-bg); color:var(--green); border-color:rgba(74,222,128,.3); }
+.bdg-src  { background:var(--blue-bg);  color:var(--blue);  border-color:rgba(96,165,250,.3); }
+.reg-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:12px 14px; margin-bottom:8px; }
+.reg-card-origen { font-size:11px; color:var(--text3); margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.reg-card-pattern { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+.reg-card-vals { display:flex; flex-wrap:wrap; gap:4px; }
+.reg-del-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:20px; padding:2px 6px; line-height:1; flex-shrink:0; }
+.reg-del-btn:hover { color:var(--red); }
+.imp-file-item { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.imp-file-name { flex:1; font-size:13px; color:var(--text2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.imp-file-type { flex:0 0 138px; }
+.resultado-stat { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.resultado-stat:last-child { border-bottom:none; }
 </style>
 </head>
 <body>
@@ -247,10 +295,8 @@ pre.code-block {
   </div>
   <div class="hdr-sub">Gastos compartidos</div>
 
-  <!-- Contenido dinámico (solo se re-renderiza al cambiar de tab) -->
   <div class="content" id="content"></div>
 
-  <!-- Bottom nav -->
   <nav class="bnav">
     <button class="bnav-btn active" id="nav-nuevo"     onclick="goTab('nuevo')">
       <span class="bnav-icon">＋</span><span class="bnav-lbl">Nuevo</span>
@@ -260,6 +306,9 @@ pre.code-block {
     </button>
     <button class="bnav-btn" id="nav-dashboard" onclick="goTab('dashboard')">
       <span class="bnav-icon">📊</span><span class="bnav-lbl">Resumen</span>
+    </button>
+    <button class="bnav-btn" id="nav-importar"  onclick="goTab('importar')">
+      <span class="bnav-icon">📥</span><span class="bnav-lbl">Importar</span>
     </button>
     <button class="bnav-btn" id="nav-config"    onclick="goTab('config')">
       <span class="bnav-icon">⚙️</span><span class="bnav-lbl">Config</span>
@@ -297,7 +346,6 @@ let listQuien  = "Todos";
 let listSearch = "";
 let dashMes    = nowMes();
 
-/* Estado del formulario — NUNCA se resetea al cambiar un pill */
 const F = {
   id: uid(), tipo: "Egreso", fecha: today(),
   descripcion: "", moneda: "ARS", monto: "",
@@ -324,27 +372,19 @@ function nowMes() {
   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
 }
 
-/* Convierte CUALQUIER formato de fecha a "YYYY-MM-DD"
-   Maneja: "2026-03-24", "Tue Mar 24 2026 ...", objetos Date, etc. */
 function normFecha(f) {
   if (!f) return today();
   const s = String(f).trim();
-  // Ya está en formato correcto
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // Intenta parsear cualquier otro formato
   const d = new Date(s);
   if (isNaN(d.getTime())) return today();
-  // Usa UTC para evitar desfase de zona horaria
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
-function getMes(f) {
-  const n = normFecha(f);
-  return n.slice(0, 7);
-}
+function getMes(f) { return normFecha(f).slice(0, 7); }
 function mesLabel(k) {
   if (!k) return "";
   const [y,m] = k.split("-");
@@ -364,6 +404,56 @@ function calcInd() {
   F.montoIndividual = String(Math.round(F.compartido === "SI" ? m/2 : m));
 }
 
+/* Strips hash prefix from obs for display */
+function displayObs(obs) {
+  return (obs || "").replace(/^\[h:[a-z0-9]+\]\s*/, "");
+}
+
+/* ═══════════════════════════════════════════════════════
+   STORAGE — toda la comunicación con Apps Script pasa por acá
+═══════════════════════════════════════════════════════ */
+const Storage = {
+  async listGastos() {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    const r = await post(url, { action: "list" });
+    if (!r.ok) throw new Error(r.error || "Error");
+    return (r.gastos || []).map(g => ({ ...g, fecha: normFecha(g.fecha) }));
+  },
+  async saveGasto(g) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "save", gasto: g });
+  },
+  async updateGasto(g) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "update", gasto: g });
+  },
+  async deleteGasto(id) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "delete", id });
+  },
+  async saveBatch(gastosList) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "saveBatch", gastos: gastosList });
+  },
+  async listReglas() {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    const r = await post(url, { action: "listReglas" });
+    if (!r.ok) throw new Error(r.error || "Error");
+    return r.reglas || [];
+  },
+  async saveReglas(reglas) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "saveReglas", reglas });
+  }
+};
+
 /* ═══════════════════════════════════════════════════════
    NAVEGACIÓN
 ═══════════════════════════════════════════════════════ */
@@ -371,11 +461,16 @@ function goTab(t) {
   currentTab = t;
   document.querySelectorAll(".bnav-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("nav-" + t)?.classList.add("active");
+
+  if (t === "importar" && !impReglasLoaded) {
+    loadImportReglas();
+  }
+
   renderTab();
 }
 
 /* ═══════════════════════════════════════════════════════
-   RENDER — sólo se llama al cambiar de tab o cargar datos
+   RENDER
 ═══════════════════════════════════════════════════════ */
 function renderTab() {
   document.getElementById("badge").textContent = gastos.length + " mov.";
@@ -383,13 +478,13 @@ function renderTab() {
   if      (currentTab === "nuevo")     c.innerHTML = buildNuevo();
   else if (currentTab === "gastos")    c.innerHTML = buildGastos();
   else if (currentTab === "dashboard") c.innerHTML = buildDashboard();
+  else if (currentTab === "importar")  c.innerHTML = buildImportar();
   else if (currentTab === "config")    c.innerHTML = buildConfig();
   attachFormListeners();
 }
 
 /* ═══════════════════════════════════════════════════════
-   TAB NUEVO — construye HTML una vez, luego sólo
-   actualiza clases y el campo readonly
+   TAB NUEVO
 ═══════════════════════════════════════════════════════ */
 function buildNuevo() {
   calcInd();
@@ -483,13 +578,9 @@ function buildNuevo() {
   </div>`;
 }
 
-/* ── Attach listeners UNA sola vez después de renderizar ──
-   Los pills NO re-renderizan el HTML, sólo cambian clases y
-   actualizan el campo ind. Los inputs de texto sólo escriben en F. */
 function attachFormListeners() {
   if (currentTab !== "nuevo") return;
 
-  /* Texto libre */
   const fDesc  = document.getElementById("f-desc");
   const fMonto = document.getElementById("f-monto");
   const fFecha = document.getElementById("f-fecha");
@@ -506,7 +597,6 @@ function attachFormListeners() {
     updateInd();
   });
 
-  /* Pills — sin re-render */
   pill("tipo-pill",  v => { F.tipo = v; });
   pill("quien-pill", v => { F.quien = v; });
   pill("mon-pill",   v => { F.moneda = v; updateInd(); });
@@ -514,14 +604,12 @@ function attachFormListeners() {
   pill("met-pill",   v => { F.metodoPago = v; });
 }
 
-/* Actualiza sólo el campo readonly sin tocar nada más */
 function updateInd() {
   calcInd();
   const el = document.getElementById("f-ind");
   if (el) el.value = F.montoIndividual ? fmt(F.montoIndividual, F.moneda) : "—";
 }
 
-/* Activa el pill correcto dentro de un grupo (por clase) */
 function pill(cls, onSelect) {
   document.querySelectorAll("." + cls).forEach(btn => {
     btn.addEventListener("click", () => {
@@ -536,7 +624,6 @@ function pill(cls, onSelect) {
    SUBMIT
 ═══════════════════════════════════════════════════════ */
 async function submitForm() {
-  /* leer valores actuales de los inputs por si acaso */
   const fDesc  = document.getElementById("f-desc");
   const fMonto = document.getElementById("f-monto");
   const fObs   = document.getElementById("f-obs");
@@ -551,20 +638,21 @@ async function submitForm() {
   if (!F.descripcion.trim()) return showToast("Completá la descripción", false);
   if (!F.monto || isNaN(+F.monto) || +F.monto <= 0) return showToast("Ingresá un monto válido", false);
 
-  const url = getScriptUrl();
-  if (!url) return showToast("Configurá la URL del script en Config", false);
+  if (!getScriptUrl()) return showToast("Configurá la URL del script en Config", false);
 
   calcInd();
   const g = {
     ...F,
-    fecha: normFecha(F.fecha),   // garantiza "YYYY-MM-DD" siempre
+    fecha: normFecha(F.fecha),
     monto: +F.monto,
     montoIndividual: +F.montoIndividual || +F.monto
   };
 
   showOverlay("Guardando…");
   try {
-    const res = await post(url, editId ? { action:"update", gasto:g } : { action:"save", gasto:g });
+    const res = editId
+      ? await Storage.updateGasto(g)
+      : await Storage.saveGasto(g);
     if (!res.ok) throw new Error(res.error || "Error");
 
     if (editId) {
@@ -633,6 +721,7 @@ function buildGastos() {
 }
 
 function buildCard(g) {
+  const obsDisplay = displayObs(g.observaciones);
   const actions = pendingDel === g.id
     ? `<div class="del-confirm">
          <span>¿Seguro?</span>
@@ -651,7 +740,7 @@ function buildCard(g) {
         <span class="tag tag-cat">${esc(g.categoria)}</span>
         ${g.compartido==="SI"?'<span class="tag tag-sh">Compartido</span>':""}
       </div>
-      <div class="gcard-meta">${normFecha(g.fecha)} · ${esc(g.metodoPago)}${g.observaciones?" · "+esc(g.observaciones):""}</div>
+      <div class="gcard-meta">${normFecha(g.fecha)} · ${esc(g.metodoPago)}${obsDisplay?" · "+esc(obsDisplay):""}</div>
     </div>
     <div class="gcard-amt">
       <div class="gcard-monto${g.tipo==="Ingreso"?" ing":""}">
@@ -672,11 +761,9 @@ function startEdit(id) {
 }
 
 async function confirmDelete(id) {
-  const url = getScriptUrl();
-  if (!url) return showToast("Configurá la URL del script", false);
   showOverlay("Eliminando…");
   try {
-    await post(url, { action:"delete", id });
+    await Storage.deleteGasto(id);
     gastos = gastos.filter(x => x.id !== id);
     pendingDel = null;
     showToast("Eliminado");
@@ -704,7 +791,6 @@ function buildDashboard() {
                   :               `Manu le debe ${fmt(Math.abs(balance))} a Barbi`;
   const balColor  = balance===0 ? "var(--green)" : "var(--warn)";
 
-  /* Por categoría */
   const byCat = {};
   mes.forEach(g => {
     if (!byCat[g.categoria]) byCat[g.categoria] = {m:0,b:0};
@@ -728,7 +814,6 @@ function buildDashboard() {
     </div>`;
   }).join("");
 
-  /* Tendencia últimos 5 meses */
   const trend = {};
   gastos.filter(g=>g.tipo==="Egreso").forEach(g=>{
     const k=getMes(g.fecha);
@@ -853,13 +938,13 @@ function getScriptUrl() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   HTTP — fetch con CORS para Apps Script
+   HTTP
 ═══════════════════════════════════════════════════════ */
 async function post(url, data) {
   const res = await fetch(url, {
     method: "POST",
     body: JSON.stringify(data),
-    headers: { "Content-Type": "text/plain" }  // Apps Script necesita text/plain para evitar preflight
+    headers: { "Content-Type": "text/plain" }
   });
   if (!res.ok) throw new Error("HTTP " + res.status);
   return res.json();
@@ -869,8 +954,7 @@ async function post(url, data) {
    CARGA DE DATOS
 ═══════════════════════════════════════════════════════ */
 async function loadGastos() {
-  const url = getScriptUrl();
-  if (!url) {
+  if (!getScriptUrl()) {
     hideOverlay();
     goTab("config");
     showToast("Primero configurá la URL del script", false);
@@ -878,10 +962,7 @@ async function loadGastos() {
   }
   showOverlay("Cargando gastos…");
   try {
-    const r = await post(url, { action:"list" });
-    if (!r.ok) throw new Error(r.error || "Error");
-    // Normaliza fechas: el Sheet puede devolver "Tue Mar 24 2026 ..." en vez de "2026-03-24"
-    gastos = (r.gastos || []).map(g => ({ ...g, fecha: normFecha(g.fecha) }));
+    gastos = await Storage.listGastos();
     showToast("Datos cargados ✓");
   } catch(e) {
     showToast("Error al conectar con el script", false);
@@ -908,11 +989,936 @@ function showToast(msg, ok=true) {
   setTimeout(() => t.remove(), 3000);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   ██ IMPORTAR TAB ██
+═══════════════════════════════════════════════════════════════════ */
+
+/* ── Import state ── */
+let impReglasLoaded = false;
+const importState = {
+  step: "selector",         // "selector" | "revision" | "reglas" | "resultado"
+  movimientos: [],
+  reglas: [],
+  reglasSugeridas: [],
+  resultado: null
+};
+
+async function loadImportReglas() {
+  if (!getScriptUrl()) return;
+  try {
+    importState.reglas = await Storage.listReglas();
+    impReglasLoaded = true;
+  } catch(e) {
+    console.warn("Error cargando reglas:", e);
+  }
+}
+
+/* ── Build dispatcher ── */
+function buildImportar() {
+  switch (importState.step) {
+    case "revision":  return buildImpRevision();
+    case "reglas":    return buildImpReglas();
+    case "resultado": return buildImpResultado();
+    default:          return buildImpSelector();
+  }
+}
+
+/* ══════════════════════════════
+   SUB-PANTALLA 1: SELECTOR
+══════════════════════════════ */
+function buildImpSelector() {
+  if (!window.XLSX) {
+    return `<div class="cfg-card">
+      <div class="cfg-title">📥 Importar extracto</div>
+      <div class="cfg-desc" style="color:var(--warn)">
+        SheetJS no pudo cargarse. Verificá que tenés conexión a internet para la primera carga y recargá la app.
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="cfg-card">
+    <div class="cfg-title">📥 Importar extracto bancario / tarjeta</div>
+    <div class="cfg-desc">
+      Seleccioná uno o varios archivos <strong>.xlsx</strong>. Los tipos se detectan por el nombre del archivo
+      (visa, amex, santander, mercadopago). Si el nombre no es reconocido, elegí el tipo manualmente.
+    </div>
+
+    <div class="field" style="margin-bottom:12px">
+      <label>Archivo(s) .xlsx</label>
+      <input type="file" id="imp-files" class="inp" accept=".xlsx" multiple
+        style="padding:9px 14px; font-size:13px; cursor:pointer"
+        onchange="onImpFilesChange()">
+    </div>
+
+    <div id="imp-file-list"></div>
+
+    <button class="btn-main" id="imp-parse-btn" style="display:none;margin-top:4px"
+      onclick="parsearArchivos()">
+      Parsear archivos →
+    </button>
+  </div>
+
+  ${!impReglasLoaded && getScriptUrl() ? `
+  <div class="cfg-card" style="font-size:13px; color:var(--text3)">
+    Cargando reglas…
+  </div>` : ""}
+
+  ${impReglasLoaded ? `
+  <div class="cfg-card">
+    <div class="cfg-title">Reglas activas</div>
+    <div class="cfg-note">
+      ${importState.reglas.length === 0
+        ? "Aún no tenés reglas. La primera importación te pedirá crear las primeras."
+        : `${importState.reglas.length} regla${importState.reglas.length!==1?"s":""} — los movimientos que matcheen se categorizarán automáticamente.`}
+    </div>
+  </div>` : ""}`;
+}
+
+function onImpFilesChange() {
+  const input  = document.getElementById("imp-files");
+  const files  = Array.from(input.files || []);
+  const listEl = document.getElementById("imp-file-list");
+  const btnEl  = document.getElementById("imp-parse-btn");
+
+  if (!files.length) { listEl.innerHTML = ""; btnEl.style.display = "none"; return; }
+
+  const html = files.map((f, i) => {
+    const det  = detectFuente(f.name);
+    const opts = [
+      { v: "visa",        l: "VISA Santander"   },
+      { v: "amex",        l: "AMEX Santander"   },
+      { v: "santander",   l: "Santander cuenta" },
+      { v: "mercadopago", l: "MercadoPago"       }
+    ].map(o => `<option value="${o.v}"${o.v===det?" selected":""}>${o.l}</option>`).join("");
+
+    return `<div class="imp-file-item">
+      <span class="imp-file-name" title="${esc(f.name)}">${esc(f.name)}</span>
+      <select class="inp imp-file-type imp-ftype" data-idx="${i}" style="font-size:13px; padding:8px 28px 8px 10px">
+        ${det ? "" : `<option value="">— tipo —</option>`}
+        ${opts}
+      </select>
+    </div>`;
+  }).join("");
+
+  listEl.innerHTML = html;
+  btnEl.style.display = "block";
+}
+
+/* ══════════════════════════════
+   SUB-PANTALLA 2: REVISIÓN
+══════════════════════════════ */
+function buildImpRevision() {
+  const movs = importState.movimientos;
+  if (!movs.length) return `<div class="empty"><div class="ico">📭</div><p>Sin movimientos para revisar.</p></div>`;
+
+  const inc     = movs.filter(m => m.incluir && !m.yaExiste);
+  const totalARS = inc.filter(m=>m.moneda==="ARS").reduce((a,m)=>a+m.monto,0);
+  const totalUSD = inc.filter(m=>m.moneda==="USD").reduce((a,m)=>a+m.monto,0);
+  let totStr = fmt(totalARS);
+  if (totalUSD > 0) totStr += " + " + fmt(totalUSD, "USD");
+
+  const catOpts = ["", ...CATS].map(c =>
+    `<option value="${esc(c)}">${c || "— sin categoría —"}</option>`
+  ).join("");
+
+  const metOpts = METODOS.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+
+  const cards = movs.map((m, i) => {
+    const catOptsI = ["", ...CATS].map(c =>
+      `<option value="${esc(c)}"${c===m.categoria?" selected":""}>${c || "— sin categoría —"}</option>`
+    ).join("");
+    const metOptsI = METODOS.map(met =>
+      `<option value="${esc(met)}"${met===m.metodoPago?" selected":""}>${esc(met)}</option>`
+    ).join("");
+
+    const amtClass = m.tipo === "Ingreso" ? " ing" : "";
+    const amtSign  = m.tipo === "Ingreso" ? "+" : "-";
+    const dupBadge = m.yaExiste  ? `<span class="bdg bdg-dup">ya cargado</span>` : "";
+    const srcBadge = `<span class="bdg bdg-src">${esc(m.fuente)}</span>`;
+
+    return `
+    <div class="imp-card${m.yaExiste ? " dup" : ""}" id="impc-${i}">
+      <div class="imp-card-top">
+        <input type="checkbox" class="imp-card-check"
+          data-idx="${i}" ${m.incluir && !m.yaExiste ? "checked" : ""} ${m.yaExiste ? "disabled" : ""}
+          onchange="impUpdCheck(this)">
+        <div class="imp-card-info">
+          <div class="imp-card-desc">${esc(m.descripcion)}${dupBadge}</div>
+          <div class="imp-card-meta">${m.fecha} ${srcBadge}</div>
+        </div>
+        <div class="imp-card-right">
+          <div class="imp-card-amt${amtClass}">${amtSign}${fmt(m.monto, m.moneda)}</div>
+        </div>
+      </div>
+
+      <div class="imp-card-fields">
+        <div class="imp-field-row">
+          <span class="imp-field-lbl">Tipo</span>
+          <div class="pill-row">
+            <button class="pill sm p-red${m.tipo==="Egreso"?" active":""}" data-idx="${i}" data-val="Egreso"
+              onclick="impUpdPill(this,'tipo')">📤 Egreso</button>
+            <button class="pill sm p-green${m.tipo==="Ingreso"?" active":""}" data-idx="${i}" data-val="Ingreso"
+              onclick="impUpdPill(this,'tipo')">📥 Ingreso</button>
+          </div>
+        </div>
+
+        <div class="imp-field-row">
+          <span class="imp-field-lbl">Categoría</span>
+          <select class="inp" style="font-size:13px; padding:7px 28px 7px 10px"
+            onchange="impUpdSelect(this,${i},'categoria')">${catOptsI}</select>
+        </div>
+
+        <div class="imp-field-row">
+          <span class="imp-field-lbl">Quién</span>
+          <div class="pill-row">
+            <button class="pill sm p-manu${m.quien==="Manu"?" active":""}" data-idx="${i}" data-val="Manu"
+              onclick="impUpdPill(this,'quien')">Manu</button>
+            <button class="pill sm p-barbi${m.quien==="Barbi"?" active":""}" data-idx="${i}" data-val="Barbi"
+              onclick="impUpdPill(this,'quien')">Barbi</button>
+          </div>
+        </div>
+
+        <div class="imp-field-row">
+          <span class="imp-field-lbl">Comp.</span>
+          <div class="pill-row">
+            <button class="pill sm p-green${m.compartido==="SI"?" active":""}" data-idx="${i}" data-val="SI"
+              onclick="impUpdPill(this,'compartido')">✅ Sí</button>
+            <button class="pill sm${m.compartido==="NO"?" active":""}" data-idx="${i}" data-val="NO"
+              onclick="impUpdPill(this,'compartido')">👤 No</button>
+          </div>
+        </div>
+
+        <div class="imp-field-row">
+          <span class="imp-field-lbl">Método</span>
+          <select class="inp" style="font-size:13px; padding:7px 28px 7px 10px"
+            onchange="impUpdSelect(this,${i},'metodoPago')">${metOptsI}</select>
+        </div>
+
+        <div class="imp-field-row" style="align-items:flex-start">
+          <span class="imp-field-lbl" style="padding-top:6px">Obs</span>
+          <textarea class="inp" rows="1" style="font-size:13px; padding:7px 10px"
+            placeholder="Observaciones…"
+            data-idx="${i}"
+            oninput="importState.movimientos[+this.dataset.idx].observaciones=this.value"
+          >${esc(m.observaciones)}</textarea>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `
+  <div class="imp-summary" id="imp-summary-bar">
+    <span><strong id="imp-inc-count">${inc.length}</strong> de ${movs.length} incluidos</span>
+    <span id="imp-total-str" style="font-family:var(--mono); font-size:12px">${totStr}</span>
+  </div>
+
+  ${cards}
+
+  <button class="btn-main" onclick="handleInsert()" style="margin-top:8px; margin-bottom:16px">
+    Insertar en la Sheet →
+  </button>
+
+  <button class="btn-secondary" onclick="impVolver()" style="margin-bottom:24px">
+    ← Volver al selector
+  </button>`;
+}
+
+/* ── Updaters para la pantalla de revisión (sin re-render) ── */
+function impUpdCheck(cb) {
+  const idx = +cb.dataset.idx;
+  importState.movimientos[idx].incluir = cb.checked;
+  updImpSummary();
+}
+
+function impUpdPill(btn, field) {
+  const idx = +btn.dataset.idx;
+  const val = btn.dataset.val;
+  importState.movimientos[idx][field] = val;
+  btn.closest(".pill-row").querySelectorAll(".pill").forEach(b =>
+    b.classList.toggle("active", b.dataset.val === val)
+  );
+  if (field === "tipo") {
+    const amtEl = document.querySelector(`#impc-${idx} .imp-card-amt`);
+    if (amtEl) {
+      amtEl.className = "imp-card-amt" + (val === "Ingreso" ? " ing" : "");
+      const m = importState.movimientos[idx];
+      amtEl.textContent = (val === "Ingreso" ? "+" : "-") + fmt(m.monto, m.moneda);
+    }
+  }
+  updImpSummary();
+}
+
+function impUpdSelect(sel, idx, field) {
+  importState.movimientos[idx][field] = sel.value;
+  updImpSummary();
+}
+
+function updImpSummary() {
+  const movs = importState.movimientos;
+  const inc  = movs.filter(m => m.incluir && !m.yaExiste);
+  const totalARS = inc.filter(m=>m.moneda==="ARS").reduce((a,m)=>a+m.monto,0);
+  const totalUSD = inc.filter(m=>m.moneda==="USD").reduce((a,m)=>a+m.monto,0);
+  let totStr = fmt(totalARS);
+  if (totalUSD > 0) totStr += " + " + fmt(totalUSD, "USD");
+
+  const cntEl = document.getElementById("imp-inc-count");
+  const totEl = document.getElementById("imp-total-str");
+  if (cntEl) cntEl.textContent = inc.length;
+  if (totEl) totEl.textContent = totStr;
+}
+
+function impVolver() {
+  importState.step = "selector";
+  importState.movimientos = [];
+  importState.reglasSugeridas = [];
+  renderTab();
+}
+
+/* ══════════════════════════════
+   SUB-PANTALLA 3: REGLAS NUEVAS
+══════════════════════════════ */
+function buildImpReglas() {
+  const sugs = importState.reglasSugeridas;
+
+  const cards = sugs.map((r, i) => {
+    const tipoOpts = ["contiene","exacto","empieza_con","regex"].map(t =>
+      `<option value="${t}"${t===r.tipoPatron?" selected":""}>${t}</option>`
+    ).join("");
+    const compTag = r.compartido === "SI"
+      ? `<span class="tag tag-sh">Compartido</span>` : "";
+
+    return `
+    <div class="reg-card" id="regc-${i}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start">
+        <div class="reg-card-origen">Origen: ${esc(r.descripcionOrigen)}</div>
+        <button class="reg-del-btn" onclick="impElimReg(${i})" title="Descartar">×</button>
+      </div>
+      <div class="reg-card-pattern">
+        <select class="inp" style="flex:0 0 120px; font-size:13px; padding:7px 28px 7px 10px"
+          onchange="importState.reglasSugeridas[${i}].tipoPatron=this.value">${tipoOpts}</select>
+        <input class="inp" style="flex:1; font-size:13px; padding:7px 10px"
+          value="${esc(r.patron)}"
+          oninput="importState.reglasSugeridas[${i}].patron=this.value">
+      </div>
+      <div class="reg-card-vals">
+        <span class="tag tag-cat">${esc(r.categoria)}</span>
+        <span class="tag tag-${r.quien==="Manu"?"manu":"barbi"}">${esc(r.quien)}</span>
+        ${compTag}
+        <span class="tag" style="color:var(--text3);background:var(--bg4)">${esc(r.metodoPago)}</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  const noSugs = sugs.length === 0
+    ? `<div class="cfg-card" style="color:var(--text3); font-size:13px">
+        No hay reglas nuevas para crear. Todos los movimientos ya matchearon reglas existentes.
+       </div>`
+    : "";
+
+  return `
+  <div class="cfg-card" style="margin-bottom:12px">
+    <div class="cfg-title">📚 Reglas nuevas a crear</div>
+    <div class="cfg-desc">
+      Estos son los patrones sugeridos para los movimientos sin regla previa. Editá el patrón,
+      cambiá el tipo o descartá los que no quieras. Las reglas aceptadas se guardarán junto con los gastos.
+    </div>
+  </div>
+
+  ${noSugs}
+  ${cards}
+
+  <button class="btn-main" onclick="doInsert()" style="margin-top:4px; margin-bottom:10px">
+    ✅ Confirmar e insertar
+  </button>
+  <button class="btn-secondary" onclick="importState.step='revision';renderTab()" style="margin-bottom:24px">
+    ← Volver a revisar
+  </button>`;
+}
+
+function impElimReg(i) {
+  importState.reglasSugeridas[i]._incluir = false;
+  const el = document.getElementById("regc-" + i);
+  if (el) el.style.display = "none";
+}
+
+/* ══════════════════════════════
+   SUB-PANTALLA 4: RESULTADO
+══════════════════════════════ */
+function buildImpResultado() {
+  const r = importState.resultado || {};
+  return `
+  <div class="cfg-card">
+    <div class="cfg-title">✅ Importación completada</div>
+    <div style="margin-top:8px">
+      <div class="resultado-stat">
+        <span>Gastos insertados</span>
+        <strong style="color:var(--green)">${r.insertados || 0}</strong>
+      </div>
+      <div class="resultado-stat">
+        <span>Fallos</span>
+        <strong style="color:${r.fallidos > 0 ? "var(--red)" : "var(--text3)"}">${r.fallidos || 0}</strong>
+      </div>
+      <div class="resultado-stat">
+        <span>Reglas guardadas</span>
+        <strong style="color:var(--blue)">${r.reglasSaved || 0}</strong>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-main" onclick="impNueva()" style="margin-top:4px; margin-bottom:10px">
+    Nueva importación
+  </button>
+  <button class="btn-secondary" onclick="goTab('gastos')" style="margin-bottom:24px">
+    Ver gastos →
+  </button>`;
+}
+
+function impNueva() {
+  importState.step = "selector";
+  importState.movimientos = [];
+  importState.reglasSugeridas = [];
+  importState.resultado = null;
+  renderTab();
+}
+
+/* ══════════════════════════════
+   PARSEO DE ARCHIVOS
+══════════════════════════════ */
+async function parsearArchivos() {
+  if (!window.XLSX) return showToast("SheetJS no está cargado", false);
+
+  const input  = document.getElementById("imp-files");
+  const files  = Array.from(input?.files || []);
+  if (!files.length) return showToast("Seleccioná al menos un archivo", false);
+
+  const ftypeEls = Array.from(document.querySelectorAll(".imp-ftype"));
+  const ftypes   = ftypeEls.map(s => s.value);
+
+  for (let i = 0; i < files.length; i++) {
+    if (!ftypes[i]) {
+      return showToast("Elegí el tipo para: " + files[i].name, false);
+    }
+  }
+
+  showOverlay("Parseando archivos…");
+  const todoMovs = [];
+
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const movs = await parseFile(files[i], ftypes[i]);
+      todoMovs.push(...movs);
+    } catch(e) {
+      hideOverlay();
+      showToast("Error en " + files[i].name + ": " + e.message, false);
+      return;
+    }
+  }
+
+  if (!todoMovs.length) {
+    hideOverlay();
+    showToast("No se encontraron movimientos en los archivos", false);
+    return;
+  }
+
+  /* Deduplicación: extraer hashes de los gastos ya cargados */
+  const existingHashes = new Set();
+  gastos.forEach(g => {
+    const m = (g.observaciones || "").match(/\[h:([a-z0-9]+)\]/);
+    if (m) existingHashes.add(m[1]);
+  });
+
+  /* Aplicar reglas */
+  const conReglas = applyReglas(importState.reglas, todoMovs);
+
+  /* Hidratar movimientos con campos editables */
+  importState.movimientos = conReglas.map(m => ({
+    ...m,
+    fecha:       m.fechaRaw,
+    descripcion: m.descripcionRaw,
+    tipo:        m.tipo || "Egreso",
+    categoria:   m._defaultCategoria || m.categoria || "",
+    quien:       m.quien || "Manu",
+    compartido:  m.compartido || "SI",
+    metodoPago:  m.metodoPago || m.metodoPagoDefault,
+    observaciones: m._obs || "",
+    incluir:     m._defaultIncluir !== undefined ? m._defaultIncluir : true,
+    yaExiste:    existingHashes.has(m.hashOrigen)
+  }));
+
+  /* Auto-deseleccionar los ya existentes */
+  importState.movimientos.forEach(m => { if (m.yaExiste) m.incluir = false; });
+
+  importState.step = "revision";
+  hideOverlay();
+  renderTab();
+}
+
+/* Dispatcher por fuente */
+function parseFile(file, fuente) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+        let rows;
+        if (fuente === "visa" || fuente === "amex") {
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null });
+          resolve(parseVisaAmex(rows, fuente));
+        } else if (fuente === "santander") {
+          const sn = wb.SheetNames.includes("UltimosMovimientos") ? "UltimosMovimientos" : wb.SheetNames[0];
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: null });
+          resolve(parseSantander(rows, fuente));
+        } else if (fuente === "mercadopago") {
+          const sn = wb.SheetNames.includes("sheet0") ? "sheet0" : wb.SheetNames[0];
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: null });
+          resolve(parseMercadoPago(rows, fuente));
+        } else {
+          reject(new Error("Tipo desconocido: " + fuente));
+        }
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ══════════════════════════════
+   PARSERS
+══════════════════════════════ */
+
+/*
+ * Formato argentina: "1.234.567,89" → 1234567.89
+ * También maneja floats JS directos (Santander).
+ */
+function parseARS(v) {
+  if (v === null || v === undefined || v === "") return NaN;
+  if (typeof v === "number") return v;
+  const s   = String(v).replace(/[$\s]/g, "").trim();
+  const neg = s.startsWith("-");
+  const abs = s.replace("-", "").replace(/\./g, "").replace(",", ".");
+  const n   = parseFloat(abs);
+  return neg ? -n : n;
+}
+
+/* "U$S10,00" → 10.00 */
+function parseUSD(v) {
+  if (typeof v === "number") return v;
+  const s   = String(v).replace(/[U$S\s]/gi, "").trim();
+  const neg = s.startsWith("-");
+  const abs = s.replace("-", "").replace(/\./g, "").replace(",", ".");
+  const n   = parseFloat(abs);
+  return neg ? -n : n;
+}
+
+/* "DD/MM/YYYY" → "YYYY-MM-DD" */
+function parseFechaSlash(s) {
+  const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+}
+
+/* "DD-MM-YYYY" → "YYYY-MM-DD" */
+function parseFechaDash(s) {
+  const m = String(s || "").trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+}
+
+/* ── VISA / AMEX (mismo formato Santander tarjeta) ── */
+const VISA_SKIP_CONTAINS = ["SU PAGO EN","CR.RG","IMPUESTO DE SELLOS","IIBB PERCEP","IVA RG 4240","DB.RG"];
+const VISA_SKIP_STARTS   = ["TOTAL DE","SALDO","OTROS CONCEPTOS","DESCRIPCIÓN","DESCRIPCION","AVISO"];
+
+function parseVisaAmex(rows, fuente) {
+  const DATA_START = 31; // fila 32 en Excel (0-indexed)
+  const movs = [];
+  let lastFecha = null;
+
+  for (let i = DATA_START; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+
+    const col0 = String(row[0] || "").trim();
+    const desc = String(row[1] || "").trim();
+    const cuotas    = String(row[2] || "").trim();
+    const montoPesos = row[4];
+    const montoDolar = row[5];
+
+    /* Saltear filas sin monto en col 4/5 (Otros conceptos, etc.) */
+    const hasPesos  = montoPesos !== null && montoPesos !== undefined && String(montoPesos).trim() !== "";
+    const hasDolar  = montoDolar !== null && montoDolar !== undefined && String(montoDolar).trim() !== "";
+    if (!hasPesos && !hasDolar) continue;
+
+    /* Filtrar por contenido */
+    const descUp = desc.toUpperCase();
+    const col0Up = col0.toUpperCase();
+    const anyTxt = descUp || col0Up;
+    if (VISA_SKIP_CONTAINS.some(s => anyTxt.includes(s))) continue;
+    if (VISA_SKIP_STARTS.some(s => descUp.startsWith(s) || col0Up.startsWith(s))) continue;
+
+    /* Fecha: heredar si está vacía */
+    let fecha = null;
+    if (row[0] !== null && row[0] !== undefined && String(row[0]).trim()) {
+      fecha = parseFechaSlash(String(row[0]).trim());
+      if (fecha) lastFecha = fecha;
+    }
+    if (!fecha) fecha = lastFecha;
+    if (!fecha) continue;
+
+    /* Monto */
+    let monto, moneda;
+    if (hasPesos) {
+      monto  = Math.abs(parseARS(montoPesos));
+      moneda = "ARS";
+    } else {
+      monto  = Math.abs(parseUSD(montoDolar));
+      moneda = "USD";
+    }
+    if (!monto || isNaN(monto)) continue;
+
+    const obsParser = cuotas ? "Cuota " + cuotas : "";
+
+    movs.push({
+      fechaRaw:        fecha,
+      descripcionRaw:  desc || col0,
+      monto,
+      moneda,
+      tipo:            "Egreso",
+      metodoPagoDefault: "T. CRÉDITO",
+      fuente,
+      hashOrigen:      makeHashOrigen(fecha, desc || col0, monto),
+      _obs:            obsParser
+    });
+  }
+
+  console.log(`[${fuente}] ${movs.length} movimientos`, movs.slice(0,3));
+  return movs;
+}
+
+/* ── SANTANDER CUENTA ── */
+function parseSantander(rows, fuente) {
+  const DATA_START = 14; // fila 15 en Excel
+  const movs = [];
+
+  for (let i = DATA_START; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 7) continue;
+
+    /* Columna A vacía; datos desde col B (índice 1) */
+    const fechaRaw = row[1];
+    const descFull = String(row[3] || "").trim();
+
+    /* Caja de Ahorro = col 5, Cuenta Corriente = col 6 */
+    let rawMonto = null;
+    const ca = row[5];
+    const cc = row[6];
+    if (ca !== null && ca !== undefined && String(ca).trim() !== "") rawMonto = ca;
+    else if (cc !== null && cc !== undefined && String(cc).trim() !== "") rawMonto = cc;
+    if (rawMonto === null) continue;
+
+    const monto = parseARS(rawMonto);
+    if (isNaN(monto)) continue;
+
+    const fecha = parseFechaSlash(String(fechaRaw || "").trim());
+    if (!fecha) continue;
+
+    /* Split descripción en tab */
+    let desc, obsExtra;
+    const tabIdx = descFull.indexOf("\t");
+    if (tabIdx >= 0) {
+      desc     = descFull.slice(0, tabIdx).trim();
+      obsExtra = descFull.slice(tabIdx + 1).trim();
+    } else {
+      desc     = descFull;
+      obsExtra = "";
+    }
+
+    if (!desc) continue;
+
+    const tipo = monto < 0 ? "Egreso" : "Ingreso";
+    const montoAbs = Math.abs(monto);
+
+    /* MetodoPago heurístico */
+    const du = desc.toUpperCase();
+    let metodoPago = "TRANSFERENCIA";
+    if (du.includes("COMPRA") || du.includes("DEBITO AUTOMATICO") || du.includes("DÉBITO AUTOMÁTICO")) {
+      metodoPago = "DÉBITO";
+    }
+
+    movs.push({
+      fechaRaw:        fecha,
+      descripcionRaw:  desc,
+      monto:           montoAbs,
+      moneda:          "ARS",
+      tipo,
+      metodoPagoDefault: metodoPago,
+      fuente,
+      hashOrigen:      makeHashOrigen(fecha, desc, monto),
+      _obs:            obsExtra
+    });
+  }
+
+  console.log(`[santander] ${movs.length} movimientos`, movs.slice(0,3));
+  return movs;
+}
+
+/* ── MERCADOPAGO ── */
+const MP_EXCLUIR_DEFAULT = ["RENDIMIENTO", "DINERO RESERVADO"];
+
+function parseMercadoPago(rows, fuente) {
+  const DATA_START = 4; // fila 5 en Excel
+  const movs = [];
+
+  for (let i = DATA_START; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 4) continue;
+
+    const fechaRaw = String(row[0] || "").trim();
+    const txType   = String(row[1] || "").trim();
+    const montoRaw = row[3];
+
+    if (!fechaRaw || !txType) continue;
+
+    const fecha = parseFechaDash(fechaRaw);
+    if (!fecha) continue;
+
+    const monto = parseARS(montoRaw);
+    if (isNaN(monto)) continue;
+
+    const tipo      = monto < 0 ? "Egreso" : "Ingreso";
+    const montoAbs  = Math.abs(monto);
+    const txUp      = txType.toUpperCase();
+
+    let metodoPago = "OTROS";
+    if (txUp.includes("TRANSFERENCIA")) metodoPago = "TRANSFERENCIA";
+    else if (txUp.includes("PAGO") || txUp.includes("COMPRA") || txUp.includes("DINERO RESERVADO")) metodoPago = "DÉBITO";
+
+    const esExcluirDefault = MP_EXCLUIR_DEFAULT.some(s => txUp.includes(s));
+    const esRendimiento    = txUp.includes("RENDIMIENTO");
+
+    movs.push({
+      fechaRaw:        fecha,
+      descripcionRaw:  txType,
+      monto:           montoAbs,
+      moneda:          "ARS",
+      tipo,
+      metodoPagoDefault: metodoPago,
+      fuente,
+      hashOrigen:      makeHashOrigen(fecha, txType, monto),
+      _obs:            "",
+      _defaultIncluir: !esExcluirDefault,
+      _defaultCategoria: esRendimiento ? "Inversiones" : ""
+    });
+  }
+
+  console.log(`[mercadopago] ${movs.length} movimientos`, movs.slice(0,3));
+  return movs;
+}
+
+/* ══════════════════════════════
+   DETECCIÓN DE FUENTE POR NOMBRE
+══════════════════════════════ */
+function detectFuente(filename) {
+  const fn = filename.toLowerCase();
+  if (fn.includes("visa"))        return "visa";
+  if (fn.includes("amex") || fn.includes("american")) return "amex";
+  if (fn.includes("santander"))   return "santander";
+  if (fn.includes("mercadopago") || fn.includes("mercado_pago") || fn.includes("mp_")) return "mercadopago";
+  return null;
+}
+
+/* ══════════════════════════════
+   HASH DETERMINÍSTICO
+══════════════════════════════ */
+function hashStr(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h) ^ s.charCodeAt(i);
+    h = h >>> 0;
+  }
+  return h.toString(36);
+}
+
+function makeHashOrigen(fecha, desc, monto) {
+  const key = String(fecha).trim()
+    + "|" + String(desc).trim().toLowerCase()
+    + "|" + String(Math.round(Math.abs(+monto || 0)));
+  return hashStr(key);
+}
+
+/* Hash almacenado en Observaciones como "[h:abc123]" */
+function buildObsImport(hashOrigen, userObs) {
+  const parts = [`[h:${hashOrigen}]`];
+  if (userObs && userObs.trim()) parts.push(userObs.trim());
+  return parts.join(" ");
+}
+
+/* ══════════════════════════════
+   MOTOR DE REGLAS
+══════════════════════════════ */
+function matchRegla(regla, desc) {
+  const d = (desc || "").toUpperCase();
+  const p = (regla.patron || "").toUpperCase();
+  switch (regla.tipoPatron) {
+    case "exacto":      return d === p;
+    case "contiene":    return d.includes(p);
+    case "empieza_con": return d.startsWith(p);
+    case "regex":
+      try { return new RegExp(regla.patron, "i").test(desc); } catch(e) { return false; }
+    default:            return false;
+  }
+}
+
+function applyReglas(reglas, movimientos) {
+  const sorted = [...reglas].sort((a, b) => (b.prioridad || 0) - (a.prioridad || 0));
+
+  return movimientos.map(mov => {
+    const matched = sorted.find(r => matchRegla(r, mov.descripcionRaw));
+    return {
+      ...mov,
+      categoria:  matched?.categoria  || "",
+      quien:      matched?.quien      || "Manu",
+      compartido: matched?.compartido || "SI",
+      metodoPago: matched?.metodoPago || mov.metodoPagoDefault,
+      ruleId:     matched?.id         || null,
+      ruleMatchedValues: matched ? {
+        categoria:  matched.categoria,
+        quien:      matched.quien,
+        compartido: matched.compartido,
+        metodoPago: matched.metodoPago
+      } : null
+    };
+  });
+}
+
+/* ══════════════════════════════
+   SUGERENCIA DE PATRONES
+══════════════════════════════ */
+const GENERIC_TOKENS = new Set([
+  "PAGO","COMPRA","MERPAGO","ARS","USD","SA","SRL","INC","COM","ORG",
+  "COOP","LTDA","ARG","DEL","LOS","LAS","SAN","EL","LA","DE","EN","CON","POR"
+]);
+
+function suggestPattern(desc) {
+  const tokens = desc.toUpperCase()
+    .split(/[\s\*\-\.\/\|]+/)
+    .filter(t => t.length > 3 && !/^\d+$/.test(t) && !GENERIC_TOKENS.has(t));
+
+  if (tokens.length > 0) {
+    const longest = tokens.sort((a, b) => b.length - a.length)[0];
+    return { tipo: "contiene", valor: longest };
+  }
+  return { tipo: "exacto", valor: desc };
+}
+
+/* ══════════════════════════════
+   INSERCIÓN
+══════════════════════════════ */
+function handleInsert() {
+  const aInsertar = importState.movimientos.filter(m => m.incluir && !m.yaExiste);
+  if (!aInsertar.length) return showToast("No hay movimientos para insertar", false);
+  if (!getScriptUrl())   return showToast("Configurá la URL del script", false);
+
+  /* Sugerir reglas para movimientos sin match previo que tienen categoría */
+  const seen = new Set();
+  const sugs = [];
+
+  aInsertar
+    .filter(m => !m.ruleId && m.categoria)
+    .forEach(m => {
+      const pat = suggestPattern(m.descripcionRaw);
+      const key = pat.tipo + "|" + pat.valor.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      sugs.push({
+        id:              uid(),
+        patron:          pat.valor,
+        tipoPatron:      pat.tipo,
+        categoria:       m.categoria,
+        quien:           m.quien,
+        compartido:      m.compartido,
+        metodoPago:      m.metodoPago,
+        prioridad:       0,
+        hits:            0,
+        descripcionOrigen: m.descripcionRaw,
+        _incluir:        true
+      });
+    });
+
+  if (sugs.length > 0) {
+    importState.reglasSugeridas = sugs;
+    importState.step = "reglas";
+    renderTab();
+  } else {
+    doInsert();
+  }
+}
+
+async function doInsert() {
+  const url = getScriptUrl();
+  if (!url) return showToast("Configurá la URL del script", false);
+
+  const aInsertar = importState.movimientos.filter(m => m.incluir && !m.yaExiste);
+  if (!aInsertar.length) {
+    showToast("No hay movimientos para insertar", false);
+    return;
+  }
+
+  showOverlay("Guardando…");
+  let insertados = 0, fallidos = 0;
+
+  /* Guardar reglas aceptadas primero */
+  const reglas = importState.reglasSugeridas.filter(r => r._incluir !== false);
+  if (reglas.length > 0) {
+    try {
+      await Storage.saveReglas(reglas);
+      importState.reglas.push(...reglas);
+    } catch(e) {
+      console.warn("Error guardando reglas:", e);
+    }
+  }
+
+  /* Construir gastos */
+  const gastosAGuardar = aInsertar.map(m => {
+    const montoInd = m.compartido === "SI" ? Math.round(m.monto / 2) : Math.round(m.monto);
+    return {
+      id:              uid(),
+      fecha:           m.fecha,
+      tipo:            m.tipo || "Egreso",
+      descripcion:     m.descripcion,
+      moneda:          m.moneda,
+      monto:           m.monto,
+      compartido:      m.compartido,
+      montoIndividual: montoInd,
+      metodoPago:      m.metodoPago,
+      categoria:       m.categoria || "Otros",
+      quien:           m.quien,
+      observaciones:   buildObsImport(m.hashOrigen, m.observaciones)
+    };
+  });
+
+  /* Batch save */
+  try {
+    const res = await Storage.saveBatch(gastosAGuardar);
+    if (!res.ok) throw new Error(res.error || "Error");
+    insertados = gastosAGuardar.length;
+    gastos.unshift(...[...gastosAGuardar].reverse());
+  } catch(e) {
+    console.error("Error inserting batch:", e);
+    fallidos = gastosAGuardar.length;
+  }
+
+  importState.resultado = { insertados, fallidos, reglasSaved: reglas.length };
+  importState.step = "resultado";
+  hideOverlay();
+  renderTab();
+}
+
 /* ═══════════════════════════════════════════════════════
    ARRANQUE
 ═══════════════════════════════════════════════════════ */
 window.addEventListener("DOMContentLoaded", async () => {
-  renderTab(); // muestra la UI aunque no haya URL todavía
+  renderTab();
   hideOverlay();
   goTab("nuevo");
   await loadGastos();
@@ -920,3 +1926,69 @@ window.addEventListener("DOMContentLoaded", async () => {
 </script>
 </body>
 </html>
+
+<!--
+═══════════════════════════════════════════════════════════════════════════
+README — PESTAÑA IMPORTAR
+═══════════════════════════════════════════════════════════════════════════
+
+## Primer mes (reglas vacías)
+
+1. Desplegá el Apps Script actualizado (Code.gs) en script.google.com.
+   - La hoja "Reglas" se crea automáticamente la primera vez.
+   - La hoja "Gastos" ya existente no se toca.
+
+2. En la app, abrí la pestaña "Importar".
+
+3. Tocá "Archivo(s) .xlsx" y seleccioná uno o varios extractos.
+   - Los archivos se detectan por nombre: visa.xlsx, amex.xlsx,
+     santander.xlsx, mercadopago.xlsx.
+   - Si el nombre no es reconocido, aparece un dropdown por cada archivo.
+
+4. Tocá "Parsear archivos →".
+   - Se muestra la pantalla de Revisión con una tarjeta por movimiento.
+   - Ninguna tiene Categoría asignada aún (campo vacío → "sin categoría").
+
+5. Recorrés la lista y asignás Categoría a cada movimiento.
+   - Los campos Quién, Compartido y Método vienen con defaults sensatos.
+   - Los movimientos de MercadoPago "Rendimientos" y "Dinero reservado"
+     vienen desmarcados por defecto.
+
+6. Tocás "Insertar en la Sheet →".
+   - Aparece la pantalla "Reglas nuevas a crear" con sugerencias de
+     patrones automáticas (ej: "contiene RAPPI" → Comidas y bebidas).
+   - Editás los patrones que quieras y descartás los que no sirvan.
+
+7. Tocás "Confirmar e insertar".
+   - Los gastos se guardan en la hoja "Gastos".
+   - Las reglas se guardan en la hoja "Reglas".
+
+## Mes siguiente (reglas aprendidas)
+
+1. Abrís la pestaña "Importar" — las reglas se cargan automáticamente.
+
+2. Seleccionás y parseás los extractos nuevos.
+
+3. La mayoría de los movimientos tienen Categoría ya pre-asignada por las reglas.
+   - Los que no matchearon ninguna regla quedan sin categoría (fondo vacío).
+   - Los "ya cargados" (mismo hash en extracto anterior) aparecen atenuados
+     y desmarcados automáticamente.
+
+4. Solo revisás y corregís los sin categoría, luego insertás.
+   - Si categorizaste alguno manualmente, se sugieren reglas nuevas al insertar.
+
+## Deduplicación
+
+Cada gasto importado lleva en Observaciones el prefijo "[h:xxxxxx]".
+En la próxima importación, si el mismo movimiento aparece otra vez
+(misma fecha + descripción + monto), se detecta como "ya cargado" y
+se excluye automáticamente.
+
+## Editar / borrar reglas
+
+Las reglas viven en la hoja "Reglas" del Google Sheet.
+Podés editarlas directamente en Sheets (cambiar patrón, prioridad, etc.).
+La próxima vez que entres a la pestaña Importar, se recargan.
+
+═══════════════════════════════════════════════════════════════════════════
+-->
