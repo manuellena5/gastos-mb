@@ -277,6 +277,46 @@ pre.code-block {
 .imp-file-type { flex:0 0 138px; }
 .resultado-stat { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
 .resultado-stat:last-child { border-bottom:none; }
+
+/* ── Stat card solo (ancho completo) ── */
+.stat-card.solo { grid-column: 1 / -1; }
+
+/* ── Balance box button ── */
+.bal-btn {
+  background:var(--warn-bg); color:var(--warn); border:1px solid rgba(251,191,36,.3);
+  border-radius:var(--rs); font-family:var(--font); font-size:13px; font-weight:500;
+  padding:8px 14px; cursor:pointer; white-space:nowrap;
+}
+.bal-btn.sec { background:var(--bg4); color:var(--text2); border-color:var(--border); }
+
+/* ── Liquidaciones — modal ── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(15,15,26,.88);
+  display:flex; align-items:flex-end; justify-content:center;
+  z-index:300; backdrop-filter:blur(2px);
+}
+.modal-card {
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:var(--r) var(--r) 0 0;
+  width:100%; max-width:480px; max-height:82vh; overflow-y:auto;
+  padding:20px 18px 28px;
+}
+.modal-title { font-size:16px; font-weight:600; margin-bottom:14px; }
+.modal-body  { margin-bottom:16px; }
+.modal-footer { display:flex; gap:10px; }
+
+/* ── Liquidaciones — filas en modal ver ── */
+.liq-row { display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--border); }
+.liq-row:last-child { border-bottom:none; }
+.liq-row-info { flex:1; min-width:0; }
+.liq-row-amt  { font-family:var(--mono); font-weight:600; color:var(--green); flex-shrink:0; }
+
+/* ── Historial de liquidaciones ── */
+.hist-list { border:1px solid var(--border); border-radius:var(--r); overflow:hidden; margin-bottom:16px; }
+.hist-row  { display:flex; align-items:center; gap:12px; padding:13px 14px; background:var(--bg2); border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s; }
+.hist-row:last-child { border-bottom:none; }
+.hist-row:active { background:var(--bg3); }
+.hist-mes  { flex:1; font-size:14px; font-weight:500; }
 </style>
 </head>
 <body>
@@ -284,7 +324,7 @@ pre.code-block {
 <!-- Overlay carga -->
 <div id="overlay">
   <div class="spinner"></div>
-  <p id="overlay-msg">Cargando gastos…</p>
+  <p id="overlay-msg">Cargando datos…</p>
 </div>
 
 <div id="app">
@@ -318,6 +358,7 @@ pre.code-block {
 </div>
 
 <div id="toasts"></div>
+<div id="modal-root"></div>
 
 <script>
 /* ═══════════════════════════════════════════════════════
@@ -348,6 +389,7 @@ let listCompartido = "Todos";
 let listSearch     = "";
 let dashMes        = nowMes();
 let dashVista      = "Todos";
+let liquidaciones  = [];
 
 const F = {
   id: uid(), tipo: "Egreso", fecha: today(),
@@ -454,6 +496,23 @@ const Storage = {
     const url = getScriptUrl();
     if (!url) throw new Error("Sin URL configurada");
     return post(url, { action: "saveReglas", reglas });
+  },
+  async listLiquidaciones() {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    const r = await post(url, { action: "listLiquidaciones" });
+    if (!r.ok) throw new Error(r.error || "Error");
+    return r.liquidaciones || [];
+  },
+  async saveLiquidacion(liq) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "saveLiquidacion", liquidacion: liq });
+  },
+  async deleteLiquidacion(id) {
+    const url = getScriptUrl();
+    if (!url) throw new Error("Sin URL configurada");
+    return post(url, { action: "deleteLiquidacion", id });
   }
 };
 
@@ -777,110 +836,395 @@ async function confirmDelete(id) {
 /* ═══════════════════════════════════════════════════════
    TAB DASHBOARD
 ═══════════════════════════════════════════════════════ */
+function getEstadoLiquidacion(mes) {
+  const eg     = gastos.filter(g => getMes(g.fecha) === mes && g.tipo === "Egreso");
+  const manuSh = eg.filter(g => g.quien==="Manu"  && g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+  const barbiSh= eg.filter(g => g.quien==="Barbi" && g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+
+  if (!manuSh && !barbiSh) return { estado:"sin_balance", balance:0, totalLiquidado:0, deudor:null, acreedor:null };
+
+  const balance = (manuSh - barbiSh) / 2; // >0 → Barbi debe, <0 → Manu debe
+  const abs     = Math.abs(balance);
+  const deudor  = balance > 0 ? "Barbi" : "Manu";
+  const acreedor= balance > 0 ? "Manu"  : "Barbi";
+
+  if (abs < 1) return { estado:"al_dia", balance:0, totalLiquidado:0, deudor, acreedor };
+
+  const totalLiquidado = liquidaciones
+    .filter(l => l.mes === mes)
+    .reduce((a,l) => a + (+l.monto), 0);
+
+  let estado;
+  if (totalLiquidado <= 0)           estado = "pendiente";
+  else if (totalLiquidado >= abs - 1) estado = "liquidado";
+  else                                estado = "parcial";
+
+  return { estado, balance: abs, totalLiquidado, deudor, acreedor };
+}
+
 function buildDashboard() {
+  /* ── Historial especial ── */
+  if (dashMes === "__historial__") return buildDashHistorial();
+
   const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
-  const mesOpts = meses.map(m => `<option value="${m}"${m===dashMes?" selected":""}>${mesLabel(m)}</option>`).join("");
+  if (meses.length && !meses.includes(dashMes)) dashMes = meses[0];
 
-  const mes = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
+  const mesOpts = meses.map(m =>
+    `<option value="${m}"${m===dashMes?" selected":""}>${mesLabel(m)}</option>`
+  ).join("");
 
-  const manuPago  = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
-  const barbiPago = mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
-  const manuSh    = mes.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
-  const barbiSh   = mes.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
-  const balance   = (manuSh - barbiSh) / 2;
-  const balTxt    = balance===0 ? "Están al día ✓"
-                  : balance>0   ? `Barbi le debe ${fmt(Math.abs(balance))} a Manu`
-                  :               `Manu le debe ${fmt(Math.abs(balance))} a Barbi`;
-  const balColor  = balance===0 ? "var(--green)" : "var(--warn)";
+  /* ── Pills de vista ── */
+  const pills = ["Todos","Manu","Barbi","Compartido"].map(v => {
+    const col = v==="Manu" ? " p-manu" : v==="Barbi" ? " p-barbi" : v==="Compartido" ? " p-green" : "";
+    return `<button type="button" class="pill sm${col}${dashVista===v?" active":""}"
+      onclick="dashVista='${v}';renderTab()">${v}</button>`;
+  }).join("");
 
+  /* ── Filtrado según dashVista ── */
+  let mes = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
+  if      (dashVista === "Manu")       mes = mes.filter(g => g.quien === "Manu");
+  else if (dashVista === "Barbi")      mes = mes.filter(g => g.quien === "Barbi");
+  else if (dashVista === "Compartido") mes = mes.filter(g => g.compartido === "SI");
+
+  /* ── Stat cards ── */
+  let statHtml;
+  if (dashVista === "Todos") {
+    const mP = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
+    const bP = mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
+    const mS = mes.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+    const bS = mes.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+    statHtml = `<div class="dash-grid">
+      <div class="stat-card">
+        <div class="stat-label">💛 Manu pagó</div>
+        <div class="stat-val" style="color:var(--manu)">${fmt(mP)}</div>
+        <div class="stat-sub">Compartido: ${fmt(mS)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">💗 Barbi pagó</div>
+        <div class="stat-val" style="color:var(--barbi)">${fmt(bP)}</div>
+        <div class="stat-sub">Compartido: ${fmt(bS)}</div>
+      </div>
+    </div>`;
+  } else if (dashVista === "Manu") {
+    const tot = mes.reduce((a,g)=>a+(+g.monto),0);
+    const sh  = mes.filter(g=>g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+    statHtml = `<div class="dash-grid">
+      <div class="stat-card solo">
+        <div class="stat-label">💛 Manu pagó</div>
+        <div class="stat-val" style="color:var(--manu)">${fmt(tot)}</div>
+        <div class="stat-sub">Compartido: ${fmt(sh)}</div>
+      </div>
+    </div>`;
+  } else if (dashVista === "Barbi") {
+    const tot = mes.reduce((a,g)=>a+(+g.monto),0);
+    const sh  = mes.filter(g=>g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+    statHtml = `<div class="dash-grid">
+      <div class="stat-card solo">
+        <div class="stat-label">💗 Barbi pagó</div>
+        <div class="stat-val" style="color:var(--barbi)">${fmt(tot)}</div>
+        <div class="stat-sub">Compartido: ${fmt(sh)}</div>
+      </div>
+    </div>`;
+  } else { /* Compartido */
+    const mS  = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
+    const bS  = mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
+    const tot = mS + bS;
+    statHtml = `<div class="dash-grid">
+      <div class="stat-card">
+        <div class="stat-label">💛 Manu puso</div>
+        <div class="stat-val" style="color:var(--manu)">${fmt(mS)}</div>
+        <div class="stat-sub">De ${fmt(tot)} total</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">💗 Barbi puso</div>
+        <div class="stat-val" style="color:var(--barbi)">${fmt(bS)}</div>
+        <div class="stat-sub">c/u debería: ${fmt(tot/2)}</div>
+      </div>
+    </div>`;
+  }
+
+  /* ── Balance box adaptativa (solo Todos / Compartido) ── */
+  let balanceHtml = "";
+  if (dashVista === "Todos" || dashVista === "Compartido") {
+    const est = getEstadoLiquidacion(dashMes);
+    if (est.estado !== "sin_balance") {
+      const allMes = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
+      const mS2 = allMes.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+      const bS2 = allMes.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+      const infoLines = `
+        <div>Manu puso <strong>${fmt(mS2)}</strong> &nbsp;·&nbsp; Barbi puso <strong>${fmt(bS2)}</strong></div>
+        <div>Total compartido: <strong>${fmt(mS2+bS2)}</strong> → c/u debería haber puesto <strong>${fmt((mS2+bS2)/2)}</strong></div>`;
+
+      if (est.estado === "al_dia") {
+        balanceHtml = `<div class="balance-box" style="border-color:rgba(74,222,128,.3)">
+          ${infoLines}
+          <div class="balance-hl" style="color:var(--green)">✅ Están al día</div>
+        </div>`;
+      } else if (est.estado === "pendiente") {
+        balanceHtml = `<div class="balance-box">
+          ${infoLines}
+          <div class="balance-hl" style="color:var(--warn)">⚠️ ${est.deudor} le debe ${fmt(est.balance)} a ${est.acreedor}</div>
+          <div style="margin-top:10px">
+            <button class="bal-btn" onclick="abrirSaldarMes('${dashMes}')">💸 Saldar mes</button>
+          </div>
+        </div>`;
+      } else if (est.estado === "parcial") {
+        balanceHtml = `<div class="balance-box">
+          ${infoLines}
+          <div class="balance-hl" style="color:var(--warn)">🔄 Parcialmente saldado (${fmt(est.totalLiquidado)} de ${fmt(est.balance)})</div>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="bal-btn" onclick="abrirSaldarMes('${dashMes}')">💸 Saldar más</button>
+            <button class="bal-btn sec" onclick="abrirVerLiquidaciones('${dashMes}')">📋 Ver detalle</button>
+          </div>
+        </div>`;
+      } else { /* liquidado */
+        const lastLiq = liquidaciones.filter(l=>l.mes===dashMes).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+        const fFmt = lastLiq ? lastLiq.fecha.slice(8)+"/"+lastLiq.fecha.slice(5,7) : "";
+        balanceHtml = `<div class="balance-box" style="border-color:rgba(74,222,128,.3)">
+          ${infoLines}
+          <div class="balance-hl" style="color:var(--green)">✅ Saldado${fFmt ? " el "+fFmt : ""}</div>
+          <div style="margin-top:10px">
+            <button class="bal-btn sec" onclick="abrirVerLiquidaciones('${dashMes}')">📋 Ver detalle</button>
+          </div>
+        </div>`;
+      }
+    }
+  }
+
+  /* ── Categorías ── */
   const byCat = {};
   mes.forEach(g => {
-    if (!byCat[g.categoria]) byCat[g.categoria] = {m:0,b:0};
-    if (g.quien==="Manu") byCat[g.categoria].m += +g.montoIndividual;
-    else                  byCat[g.categoria].b += +g.montoIndividual;
+    if (!byCat[g.categoria]) byCat[g.categoria] = {m:0, b:0};
+    if (g.quien === "Manu") byCat[g.categoria].m += +g.montoIndividual;
+    else                    byCat[g.categoria].b += +g.montoIndividual;
   });
   const catData = Object.entries(byCat)
-    .map(([cat,v])=>({cat,m:v.m,b:v.b,total:v.m+v.b}))
-    .sort((a,b)=>b.total-a.total).slice(0,9);
+    .map(([cat,v]) => ({cat, m:v.m, b:v.b, total:v.m+v.b}))
+    .sort((a,b) => b.total-a.total).slice(0,9);
   const maxCat = catData.length ? catData[0].total : 1;
 
-  const catRows = catData.map(c=>{
+  const legendHtml = dashVista === "Manu"
+    ? `<span><span class="ldot" style="background:var(--manu)"></span>Manu</span>`
+    : dashVista === "Barbi"
+    ? `<span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>`
+    : `<span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
+       <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>`;
+
+  const catRows = catData.map(c => {
     const wt = (c.total/maxCat*100).toFixed(1);
-    const wm = c.total ? (c.m/c.total*100).toFixed(1) : 0;
+    let barContent;
+    if (dashVista === "Manu") {
+      barContent = `<div class="bar-inner" style="width:${wt}%"><div class="bar-m" style="width:100%"></div></div>`;
+    } else if (dashVista === "Barbi") {
+      barContent = `<div class="bar-inner" style="width:${wt}%"><div class="bar-b" style="width:100%"></div></div>`;
+    } else {
+      const wm = c.total ? (c.m/c.total*100).toFixed(1) : 0;
+      barContent = `<div class="bar-inner" style="width:${wt}%"><div class="bar-m" style="width:${wm}%"></div><div class="bar-b" style="width:${100-wm}%"></div></div>`;
+    }
     return `<div class="cat-row">
       <div class="cat-name"><span>${esc(c.cat)}</span><span class="cat-total">${fmt(c.total)}</span></div>
-      <div class="bar-bg"><div class="bar-inner" style="width:${wt}%">
-        <div class="bar-m" style="width:${wm}%"></div>
-        <div class="bar-b" style="width:${100-wm}%"></div>
-      </div></div>
+      <div class="bar-bg">${barContent}</div>
     </div>`;
   }).join("");
 
+  /* ── Tendencia ── */
   const trend = {};
-  gastos.filter(g=>g.tipo==="Egreso").forEach(g=>{
-    const k=getMes(g.fecha);
-    if(!trend[k]) trend[k]={k,m:0,b:0};
-    if(g.quien==="Manu") trend[k].m += +g.montoIndividual;
-    else                 trend[k].b += +g.montoIndividual;
+  let tSrc = gastos.filter(g => g.tipo === "Egreso");
+  if      (dashVista === "Manu")       tSrc = tSrc.filter(g => g.quien === "Manu");
+  else if (dashVista === "Barbi")      tSrc = tSrc.filter(g => g.quien === "Barbi");
+  else if (dashVista === "Compartido") tSrc = tSrc.filter(g => g.compartido === "SI");
+  tSrc.forEach(g => {
+    const k = getMes(g.fecha);
+    if (!trend[k]) trend[k] = {k, m:0, b:0};
+    if (g.quien === "Manu") trend[k].m += +g.montoIndividual;
+    else                    trend[k].b += +g.montoIndividual;
   });
-  const tData = Object.values(trend).sort((a,b)=>a.k<b.k?-1:1).slice(-5);
-  const maxT  = Math.max(...tData.map(t=>t.m+t.b),1);
+  const tData = Object.values(trend).sort((a,b) => a.k<b.k?-1:1).slice(-5);
+  const maxT  = Math.max(...tData.map(t=>t.m+t.b), 1);
 
-  const tRows = tData.map(t=>{
+  const tRows = tData.map(t => {
     const tot = t.m+t.b;
     const w   = (tot/maxT*100).toFixed(1);
-    const wm  = tot ? (t.m/tot*100).toFixed(1) : 0;
     const lbl = mesLabel(t.k).split(" ")[0].slice(0,3) + " " + t.k.split("-")[0];
+    let tBar;
+    if (dashVista === "Manu") {
+      tBar = `<div class="trend-inner" style="width:${w}%"><div class="trend-m" style="width:100%"></div></div>`;
+    } else if (dashVista === "Barbi") {
+      tBar = `<div class="trend-inner" style="width:${w}%"><div class="trend-b" style="width:100%"></div></div>`;
+    } else {
+      const wm = tot ? (t.m/tot*100).toFixed(1) : 0;
+      tBar = `<div class="trend-inner" style="width:${w}%"><div class="trend-m" style="width:${wm}%"></div><div class="trend-b" style="width:${100-wm}%"></div></div>`;
+    }
     return `<div class="trend-row">
       <span class="trend-mes">${lbl}</span>
-      <div class="trend-bg"><div class="trend-inner" style="width:${w}%">
-        <div class="trend-m" style="width:${wm}%"></div>
-        <div class="trend-b" style="width:${100-wm}%"></div>
-      </div></div>
+      <div class="trend-bg">${tBar}</div>
       <span class="trend-tot">${fmt(tot)}</span>
     </div>`;
   }).join("");
 
   return `
+  <div class="filter-pills">
+    ${pills}
+  </div>
+
   <div class="mes-sel">
     <label>Mes</label>
     <select class="inp" onchange="dashMes=this.value;renderTab()">
-      ${meses.length===0?`<option value="${dashMes}">${mesLabel(dashMes)}</option>`:mesOpts}
+      ${meses.length===0 ? `<option value="${dashMes}">${mesLabel(dashMes)}</option>` : mesOpts}
+      <option value="__historial__">📋 Historial</option>
     </select>
   </div>
 
-  <div class="dash-grid">
-    <div class="stat-card">
-      <div class="stat-label">💛 Manu pagó</div>
-      <div class="stat-val" style="color:var(--manu)">${fmt(manuPago)}</div>
-      <div class="stat-sub">Compartido: ${fmt(manuSh)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">💗 Barbi pagó</div>
-      <div class="stat-val" style="color:var(--barbi)">${fmt(barbiPago)}</div>
-      <div class="stat-sub">Compartido: ${fmt(barbiSh)}</div>
-    </div>
-  </div>
-
-  ${(manuSh>0||barbiSh>0) ? `
-  <div class="balance-box">
-    <div>Manu puso <strong>${fmt(manuSh)}</strong> &nbsp;·&nbsp; Barbi puso <strong>${fmt(barbiSh)}</strong></div>
-    <div>Total compartido: <strong>${fmt(manuSh+barbiSh)}</strong> → c/u debería haber puesto <strong>${fmt((manuSh+barbiSh)/2)}</strong></div>
-    <div class="balance-hl" style="color:${balColor}">${balTxt}</div>
-  </div>` : ""}
+  ${statHtml}
+  ${balanceHtml}
 
   ${catData.length > 0 ? `
-  <div class="sec-title">
-    Por categoría
-    <span class="legend">
-      <span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
-      <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>
-    </span>
-  </div>
+  <div class="sec-title">Por categoría <span class="legend">${legendHtml}</span></div>
   <div class="cat-list">${catRows}</div>
-  ${tData.length>1?`<div class="sec-title">Últimos meses</div><div class="trend-list">${tRows}</div>`:""}
+  ${tData.length>1 ? `<div class="sec-title">Últimos meses</div><div class="trend-list">${tRows}</div>` : ""}
   ` : `<div class="empty"><div class="ico">📊</div><p>Sin egresos para ${mesLabel(dashMes)||"este mes"}.</p></div>`}
   `;
+}
+
+/* ── Historial de liquidaciones ── */
+function buildDashHistorial() {
+  const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
+  if (!meses.length) return `<div class="empty"><div class="ico">📋</div><p>Sin movimientos registrados.</p></div>`;
+
+  const rows = meses.map(mes => {
+    const est = getEstadoLiquidacion(mes);
+    let estadoHtml;
+    if      (est.estado === "sin_balance")  estadoHtml = `<span style="color:var(--text3);font-size:12px">Sin compartidos</span>`;
+    else if (est.estado === "al_dia")       estadoHtml = `<span style="color:var(--green);font-size:12px">✅ Al día</span>`;
+    else if (est.estado === "pendiente")    estadoHtml = `<span style="color:var(--warn);font-size:12px">⚠️ ${fmt(est.balance)} pend.</span>`;
+    else if (est.estado === "parcial")      estadoHtml = `<span style="color:var(--blue);font-size:12px">🔄 ${fmt(est.totalLiquidado)}/${fmt(est.balance)}</span>`;
+    else                                    estadoHtml = `<span style="color:var(--green);font-size:12px">✅ Saldado</span>`;
+    return `<div class="hist-row" onclick="dashMes='${mes}';renderTab()">
+      <span class="hist-mes">${mesLabel(mes)}</span>
+      ${estadoHtml}
+      <span style="color:var(--text3);font-size:18px;line-height:1">›</span>
+    </div>`;
+  }).join("");
+
+  return `
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+    <button class="bal-btn sec" onclick="dashMes='${meses[0]}';renderTab()" style="padding:8px 14px">← Volver</button>
+    <div style="font-weight:600; font-size:15px">Historial de liquidaciones</div>
+  </div>
+  <div class="hist-list">${rows}</div>`;
+}
+
+/* ═══════════════════════════════════════════════════════
+   LIQUIDACIONES — MODALES
+═══════════════════════════════════════════════════════ */
+function cerrarModal() {
+  document.getElementById("modal-root").innerHTML = "";
+}
+
+function abrirSaldarMes(mes) {
+  const est = getEstadoLiquidacion(mes);
+  if (est.estado === "sin_balance" || est.estado === "al_dia") return;
+  const pendiente = Math.max(0, est.balance - est.totalLiquidado);
+  document.getElementById("modal-root").innerHTML = `
+  <div class="modal-overlay" id="modal-overlay" onclick="if(event.target.id==='modal-overlay')cerrarModal()">
+    <div class="modal-card">
+      <div class="modal-title">💸 Saldar ${mesLabel(mes)}</div>
+      <div class="modal-body">
+        <div style="font-size:13px; color:var(--text2); margin-bottom:14px; line-height:1.8">
+          <strong>${est.deudor}</strong> le debe
+          <strong style="color:var(--warn)">${fmt(pendiente)}</strong> a
+          <strong>${est.acreedor}</strong>
+        </div>
+        <div class="fgrid">
+          <div class="field">
+            <label>Monto (ARS)</label>
+            <input id="sal-monto" type="number" class="inp" value="${Math.round(pendiente)}" min="1">
+          </div>
+          <div class="field">
+            <label>Fecha</label>
+            <input id="sal-fecha" type="date" class="inp" value="${today()}">
+          </div>
+          <div class="field">
+            <label>Observaciones</label>
+            <input id="sal-obs" type="text" class="inp" placeholder="Opcional">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="cerrarModal()" style="flex:1">Cancelar</button>
+        <button class="btn-main" onclick="confirmarSaldar('${mes}','${est.deudor}','${est.acreedor}')" style="flex:2">Confirmar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function confirmarSaldar(mes, pagador, receptor) {
+  const monto = parseFloat(document.getElementById("sal-monto")?.value) || 0;
+  if (monto <= 0) { showToast("Ingresá un monto válido", false); return; }
+  const liq = {
+    id:            uid(),
+    mes,
+    pagador,
+    receptor,
+    monto,
+    fecha:         document.getElementById("sal-fecha")?.value || today(),
+    observaciones: document.getElementById("sal-obs")?.value  || ""
+  };
+  cerrarModal();
+  showOverlay("Guardando…");
+  try {
+    const res = await Storage.saveLiquidacion(liq);
+    if (!res.ok) throw new Error(res.error || "Error");
+    liquidaciones.push(liq);
+    showToast("Liquidación guardada ✓");
+  } catch(e) {
+    showToast("Error al guardar", false);
+  }
+  hideOverlay();
+  renderTab();
+}
+
+function abrirVerLiquidaciones(mes) {
+  const liqs = liquidaciones.filter(l => l.mes === mes)
+    .sort((a,b) => a.fecha.localeCompare(b.fecha));
+  const rows = liqs.length === 0
+    ? `<div style="color:var(--text3);font-size:13px;padding:14px 0">Sin liquidaciones registradas para este mes.</div>`
+    : liqs.map(l => {
+        const d = l.fecha.slice(8)+"/"+l.fecha.slice(5,7)+"/"+l.fecha.slice(0,4);
+        return `<div class="liq-row">
+          <div class="liq-row-info">
+            <div style="font-size:13px;font-weight:500">${l.pagador} → ${l.receptor}</div>
+            <div style="font-size:11px;color:var(--text3)">${d}${l.observaciones ? " · "+esc(l.observaciones) : ""}</div>
+          </div>
+          <span class="liq-row-amt">${fmt(l.monto)}</span>
+          <button class="act-btn" onclick="borrarLiquidacion('${l.id}','${mes}')" style="color:var(--text3)">🗑️</button>
+        </div>`;
+      }).join("");
+
+  document.getElementById("modal-root").innerHTML = `
+  <div class="modal-overlay" id="modal-overlay" onclick="if(event.target.id==='modal-overlay')cerrarModal()">
+    <div class="modal-card">
+      <div class="modal-title">📋 Liquidaciones — ${mesLabel(mes)}</div>
+      <div class="modal-body">${rows}</div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="cerrarModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function borrarLiquidacion(id, mes) {
+  cerrarModal();
+  showOverlay("Eliminando…");
+  try {
+    await Storage.deleteLiquidacion(id);
+    liquidaciones = liquidaciones.filter(l => l.id !== id);
+    showToast("Liquidación eliminada");
+  } catch(e) {
+    showToast("Error al eliminar", false);
+  }
+  hideOverlay();
+  renderTab();
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -906,7 +1250,7 @@ function buildConfig() {
   <div class="cfg-card">
     <div class="cfg-title">Recargar gastos</div>
     <div class="cfg-desc">Si cargaste gastos desde el otro celular y no aparecen, tocá este botón.</div>
-    <button class="btn-secondary" onclick="loadGastos()">🔄 Recargar datos</button>
+    <button class="btn-secondary" onclick="loadDatos()">🔄 Recargar datos</button>
   </div>
 
   <div class="cfg-card">
@@ -932,7 +1276,7 @@ function saveScriptUrl() {
   if (!url) return showToast("Pegá una URL válida", false);
   localStorage.setItem("mbs-script-url", url);
   showToast("URL guardada ✓");
-  loadGastos();
+  loadDatos();
 }
 
 function getScriptUrl() {
@@ -1016,16 +1360,19 @@ async function post(url, data) {
 /* ═══════════════════════════════════════════════════════
    CARGA DE DATOS
 ═══════════════════════════════════════════════════════ */
-async function loadGastos() {
+async function loadDatos() {
   if (!getScriptUrl()) {
     hideOverlay();
     goTab("config");
     showToast("Primero configurá la URL del script", false);
     return;
   }
-  showOverlay("Cargando gastos…");
+  showOverlay("Cargando datos…");
   try {
-    gastos = await Storage.listGastos();
+    [gastos, liquidaciones] = await Promise.all([
+      Storage.listGastos(),
+      Storage.listLiquidaciones()
+    ]);
     showToast("Datos cargados ✓");
   } catch(e) {
     showToast("Error al conectar con el script", false);
@@ -1984,7 +2331,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   renderTab();
   hideOverlay();
   goTab("nuevo");
-  await loadGastos();
+  await loadDatos();
 });
 </script>
 </body>

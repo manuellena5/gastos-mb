@@ -27,6 +27,11 @@ const REGLAS_COLS = [
   "compartido", "metodoPago", "prioridad", "hits", "id"
 ];
 
+const LIQUIDACIONES_SHEET = "Liquidaciones";
+const LIQUIDACIONES_COLS  = [
+  "Mes", "Pagador", "Receptor", "Monto", "Fecha", "Observaciones", "ID"
+];
+
 function doPost(e) {
   try {
     const data   = JSON.parse(e.postData.contents);
@@ -142,6 +147,58 @@ function handleAction(data) {
     case "saveReglas": {
       const sheet = getOrCreateSheet(REGLAS_SHEET, REGLAS_COLS);
       return handleSaveReglas(data.reglas || [], sheet);
+    }
+
+    /* ── Liquidaciones ── */
+    case "listLiquidaciones": {
+      const sheet = getOrCreateSheet(LIQUIDACIONES_SHEET, LIQUIDACIONES_COLS);
+      const all = sheet.getDataRange().getValues();
+      if (all.length <= 1) return { ok: true, liquidaciones: [] };
+      const liquidaciones = all.slice(1)
+        .filter(r => r[6])
+        .map(r => ({
+          mes:           String(r[0] || ""),
+          pagador:       String(r[1] || ""),
+          receptor:      String(r[2] || ""),
+          monto:         Number(r[3]  || 0),
+          fecha:         formatFecha(r[4]),
+          observaciones: String(r[5] || ""),
+          id:            String(r[6])
+        }));
+      return { ok: true, liquidaciones };
+    }
+
+    case "saveLiquidacion": {
+      const sheet = getOrCreateSheet(LIQUIDACIONES_SHEET, LIQUIDACIONES_COLS);
+      const liq  = data.liquidacion;
+      const all  = sheet.getDataRange().getValues();
+      let rowIdx = -1;
+      for (let i = 1; i < all.length; i++) {
+        if (String(all[i][6]) === String(liq.id)) { rowIdx = i + 1; break; }
+      }
+      const row = [
+        liq.mes, liq.pagador, liq.receptor,
+        Number(liq.monto), liq.fecha,
+        liq.observaciones || "", liq.id
+      ];
+      if (rowIdx > 0) {
+        sheet.getRange(rowIdx, 1, 1, LIQUIDACIONES_COLS.length).setValues([row]);
+      } else {
+        sheet.appendRow(row);
+      }
+      return { ok: true };
+    }
+
+    case "deleteLiquidacion": {
+      const sheet = getOrCreateSheet(LIQUIDACIONES_SHEET, LIQUIDACIONES_COLS);
+      const all = sheet.getDataRange().getValues();
+      for (let i = all.length - 1; i >= 1; i--) {
+        if (String(all[i][6]) === String(data.id)) {
+          sheet.deleteRow(i + 1);
+          return { ok: true };
+        }
+      }
+      return { ok: true };
     }
 
     default:
