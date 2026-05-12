@@ -690,24 +690,9 @@ function buildGastos() {
     .concat(meses.map(m => `<option value="${m}"${m===listMes?" selected":""}>${mesLabel(m)}</option>`))
     .join("");
 
-  // Opciones del filtro vista: Todos | Compartidos | Manu | Barbi
-  const VISTAS = [
-    { val:"Todos",       cls:"",         lbl:"Todos" },
-    { val:"Compartidos", cls:"fp-sh",    lbl:"🤝 Compartidos" },
-    { val:"Manu",        cls:"fp-manu",  lbl:"💛 Manu" },
-    { val:"Barbi",       cls:"fp-barbi", lbl:"💗 Barbi" },
-  ];
-  const vistaPills = VISTAS.map(v =>
-    `<button class="fpill ${v.cls}${listCompartido===v.val?" active":""}"
-      onclick="listCompartido='${v.val}';renderTab()">${v.lbl}</button>`
-  ).join("");
-
   const filtrados = gastos.filter(g => {
     if (listMes && getMes(g.fecha) !== listMes) return false;
-    // Filtro vista
-    if (listCompartido === "Compartidos" && g.compartido !== "SI") return false;
-    if (listCompartido === "Manu"  && !(g.quien === "Manu"  && g.compartido !== "SI")) return false;
-    if (listCompartido === "Barbi" && !(g.quien === "Barbi" && g.compartido !== "SI")) return false;
+    if (listQuien !== "Todos" && g.quien !== listQuien) return false;
     if (listSearch) {
       const q = listSearch.toLowerCase();
       return ["descripcion","categoria","observaciones"].some(k => (g[k]||"").toLowerCase().includes(q));
@@ -715,13 +700,9 @@ function buildGastos() {
     return true;
   });
 
-  const totalEg  = filtrados.filter(g=>g.tipo==="Egreso").reduce((a,g)=>a+(+g.monto),0);
-  const totalIng = filtrados.filter(g=>g.tipo==="Ingreso").reduce((a,g)=>a+(+g.monto),0);
-  let countTxt = filtrados.length + " movimiento" + (filtrados.length!==1?"s":"");
-  if (filtrados.length > 0) {
-    countTxt += " · Egresos: " + fmt(totalEg);
-    if (totalIng > 0) countTxt += " · Ingresos: " + fmt(totalIng);
-  }
+  const totalEg = filtrados.filter(g=>g.tipo==="Egreso").reduce((a,g)=>a+(+g.monto),0);
+  const countTxt = filtrados.length + " movimiento" + (filtrados.length!==1?"s":"")
+    + (filtrados.length>0 ? " · Total egresos: " + fmt(totalEg) : "");
 
   const cards = filtrados.length === 0
     ? `<div class="empty"><div class="ico">${gastos.length===0?"📝":"🔍"}</div>
@@ -729,16 +710,15 @@ function buildGastos() {
     : filtrados.map(buildCard).join("");
 
   return `
-    <div class="filter-row">
+    <div class="filters">
       <select class="inp" style="flex:1 1 140px" onchange="listMes=this.value;renderTab()">${mesOpts}</select>
-      <input type="search" class="inp" style="flex:1 1 120px" placeholder="🔍 Buscar…" value="${esc(listSearch)}"
+      <select class="inp" style="flex:0 1 110px" onchange="listQuien=this.value;renderTab()">
+        ${["Todos","Manu","Barbi"].map(p=>`<option${p===listQuien?" selected":""}>${p}</option>`).join("")}
+      </select>
+      <input type="search" class="inp" style="flex:1 1 100%" placeholder="🔍 Buscar…" value="${esc(listSearch)}"
         oninput="listSearch=this.value;renderTab()">
     </div>
-    <div class="filter-pills">${vistaPills}</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <span class="count-line" style="margin-bottom:0">${countTxt}</span>
-      ${filtrados.length > 0 ? `<button class="btn-export" onclick="exportarExcel()">📥 Excel</button>` : ""}
-    </div>
+    <div class="count-line">${countTxt}</div>
     ${cards}`;
 }
 
@@ -801,20 +781,17 @@ function buildDashboard() {
   const meses = [...new Set(gastos.map(g => getMes(g.fecha)))].sort().reverse();
   const mesOpts = meses.map(m => `<option value="${m}"${m===dashMes?" selected":""}>${mesLabel(m)}</option>`).join("");
 
-  // Pills de vista
-  const VISTAS = [
-    { val:"Todos",       cls:"",         lbl:"Todos" },
-    { val:"Compartidos", cls:"fp-sh",    lbl:"🤝 Compartidos" },
-    { val:"Manu",        cls:"fp-manu",  lbl:"💛 Manu" },
-    { val:"Barbi",       cls:"fp-barbi", lbl:"💗 Barbi" },
-  ];
-  const vistaPills = VISTAS.map(v =>
-    `<button class="fpill ${v.cls}${dashVista===v.val?" active":""}"
-      onclick="dashVista='${v.val}';renderTab()">${v.lbl}</button>`
-  ).join("");
+  const mes = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
 
-  // Gastos del mes seleccionado
-  const todosEg = gastos.filter(g => getMes(g.fecha) === dashMes && g.tipo === "Egreso");
+  const manuPago  = mes.filter(g=>g.quien==="Manu").reduce((a,g)=>a+(+g.monto),0);
+  const barbiPago = mes.filter(g=>g.quien==="Barbi").reduce((a,g)=>a+(+g.monto),0);
+  const manuSh    = mes.filter(g=>g.quien==="Manu" &&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+  const barbiSh   = mes.filter(g=>g.quien==="Barbi"&&g.compartido==="SI").reduce((a,g)=>a+(+g.monto),0);
+  const balance   = (manuSh - barbiSh) / 2;
+  const balTxt    = balance===0 ? "Están al día ✓"
+                  : balance>0   ? `Barbi le debe ${fmt(Math.abs(balance))} a Manu`
+                  :               `Manu le debe ${fmt(Math.abs(balance))} a Barbi`;
+  const balColor  = balance===0 ? "var(--green)" : "var(--warn)";
 
   const byCat = {};
   mes.forEach(g => {
@@ -830,27 +807,17 @@ function buildDashboard() {
   const catRows = catData.map(c=>{
     const wt = (c.total/maxCat*100).toFixed(1);
     const wm = c.total ? (c.m/c.total*100).toFixed(1) : 0;
-    // En vistas individuales, barra de un solo color
-    const barHtml = (dashVista==="Manu")
-      ? `<div class="bar-m" style="width:100%"></div>`
-      : (dashVista==="Barbi")
-        ? `<div class="bar-b" style="width:100%"></div>`
-        : `<div class="bar-m" style="width:${wm}%"></div><div class="bar-b" style="width:${100-wm}%"></div>`;
     return `<div class="cat-row">
       <div class="cat-name"><span>${esc(c.cat)}</span><span class="cat-total">${fmt(c.total)}</span></div>
-      <div class="bar-bg"><div class="bar-inner" style="width:${wt}%">${barHtml}</div></div>
+      <div class="bar-bg"><div class="bar-inner" style="width:${wt}%">
+        <div class="bar-m" style="width:${wm}%"></div>
+        <div class="bar-b" style="width:${100-wm}%"></div>
+      </div></div>
     </div>`;
   }).join("");
 
   const trend = {};
   gastos.filter(g=>g.tipo==="Egreso").forEach(g=>{
-    const aplicado = (() => {
-      if (dashVista==="Compartidos") return g.compartido==="SI";
-      if (dashVista==="Manu")  return g.quien==="Manu"  && g.compartido!=="SI";
-      if (dashVista==="Barbi") return g.quien==="Barbi" && g.compartido!=="SI";
-      return true;
-    })();
-    if (!aplicado) return;
     const k=getMes(g.fecha);
     if(!trend[k]) trend[k]={k,m:0,b:0};
     if(g.quien==="Manu") trend[k].m += +g.montoIndividual;
@@ -864,25 +831,15 @@ function buildDashboard() {
     const w   = (tot/maxT*100).toFixed(1);
     const wm  = tot ? (t.m/tot*100).toFixed(1) : 0;
     const lbl = mesLabel(t.k).split(" ")[0].slice(0,3) + " " + t.k.split("-")[0];
-    const barHtml = (dashVista==="Manu")
-      ? `<div class="trend-m" style="width:100%"></div>`
-      : (dashVista==="Barbi")
-        ? `<div class="trend-b" style="width:100%"></div>`
-        : `<div class="trend-m" style="width:${wm}%"></div><div class="trend-b" style="width:${100-wm}%"></div>`;
     return `<div class="trend-row">
       <span class="trend-mes">${lbl}</span>
-      <div class="trend-bg"><div class="trend-inner" style="width:${w}%">${barHtml}</div></div>
+      <div class="trend-bg"><div class="trend-inner" style="width:${w}%">
+        <div class="trend-m" style="width:${wm}%"></div>
+        <div class="trend-b" style="width:${100-wm}%"></div>
+      </div></div>
       <span class="trend-tot">${fmt(tot)}</span>
     </div>`;
   }).join("");
-
-  // Leyenda según vista
-  const legendHtml = (dashVista==="Manu")
-    ? `<span><span class="ldot" style="background:var(--manu)"></span>Manu</span>`
-    : (dashVista==="Barbi")
-      ? `<span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>`
-      : `<span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
-         <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>`;
 
   return `
   <div class="mes-sel">
@@ -891,14 +848,34 @@ function buildDashboard() {
       ${meses.length===0?`<option value="${dashMes}">${mesLabel(dashMes)}</option>`:mesOpts}
     </select>
   </div>
-  <div class="filter-pills" style="margin-bottom:14px">${vistaPills}</div>
 
-  ${kpiHtml}
+  <div class="dash-grid">
+    <div class="stat-card">
+      <div class="stat-label">💛 Manu pagó</div>
+      <div class="stat-val" style="color:var(--manu)">${fmt(manuPago)}</div>
+      <div class="stat-sub">Compartido: ${fmt(manuSh)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">💗 Barbi pagó</div>
+      <div class="stat-val" style="color:var(--barbi)">${fmt(barbiPago)}</div>
+      <div class="stat-sub">Compartido: ${fmt(barbiSh)}</div>
+    </div>
+  </div>
+
+  ${(manuSh>0||barbiSh>0) ? `
+  <div class="balance-box">
+    <div>Manu puso <strong>${fmt(manuSh)}</strong> &nbsp;·&nbsp; Barbi puso <strong>${fmt(barbiSh)}</strong></div>
+    <div>Total compartido: <strong>${fmt(manuSh+barbiSh)}</strong> → c/u debería haber puesto <strong>${fmt((manuSh+barbiSh)/2)}</strong></div>
+    <div class="balance-hl" style="color:${balColor}">${balTxt}</div>
+  </div>` : ""}
 
   ${catData.length > 0 ? `
   <div class="sec-title">
     Por categoría
-    <span class="legend">${legendHtml}</span>
+    <span class="legend">
+      <span><span class="ldot" style="background:var(--manu)"></span>Manu</span>
+      <span><span class="ldot" style="background:var(--barbi)"></span>Barbi</span>
+    </span>
   </div>
   <div class="cat-list">${catRows}</div>
   ${tData.length>1?`<div class="sec-title">Últimos meses</div><div class="trend-list">${tRows}</div>`:""}
